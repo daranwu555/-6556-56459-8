@@ -263,3 +263,72 @@ export function thumb(it) {
 export function hydrateThumbs(root, items) {
   root.querySelectorAll('img[data-thumb]').forEach((img) => { const it = items[img.dataset.thumb]; if (it) thumb(it).then((src) => { if (src) img.src = src; }); });
 }
+
+// ───── 城市 ─────
+const LOT = 5, ROAD = 1.6;
+export class CityView extends Stage {
+  constructor(el, opt = {}) {
+    super(el, { shadows: true });
+    this.opt = opt; this.token = 0; this.sel = -1; this.beacons = []; this.bmap = {};
+    this.root = new THREE.Group(); this.scene.add(this.root);
+    this.controls.minPolarAngle = 0.25; this.controls.maxPolarAngle = 1.2; this.controls.minDistance = 8; this.controls.maxDistance = 48;
+    this.scene.fog = new THREE.Fog(0xcfe3d8, 60, 120);
+    const dom = this.renderer.domElement; let down = null;
+    dom.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
+    dom.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 6) this.click(e); down = null; });
+    this.ray = new THREE.Raycaster(); this.mouse = new THREE.Vector2(); this.t0 = performance.now();
+  }
+  setBuildings(map) { this.bmap = map; }
+  lotPos(i, cols) { const c = i % cols, r = Math.floor(i / cols); return [-this.W / 2 + ROAD + LOT / 2 + c * (LOT + ROAD), -this.D / 2 + ROAD + LOT / 2 + r * (LOT + ROAD)]; }
+  async setCity(city) {
+    const tk = ++this.token, { cols, rows, lots } = city; this.cols = cols;
+    this.W = cols * LOT + (cols + 1) * ROAD; this.D = rows * LOT + (rows + 1) * ROAD;
+    const g = new THREE.Group(); const mat = (c, r = 0.9) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(this.W + 40, this.D + 40), mat(0x86b87a)); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; g.add(ground);
+    const road = new THREE.Mesh(new THREE.BoxGeometry(this.W, 0.06, this.D), mat(0x3f434b, 0.95)); road.position.y = 0.0; road.receiveShadow = true; g.add(road);
+    const dash = mat(0xf2e9c8);
+    for (let c = 0; c <= cols; c++) for (let k = 0; k < this.D / 1.6; k++) { const d = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.01, 0.7), dash); d.position.set(-this.W / 2 + ROAD / 2 + c * (LOT + ROAD), 0.035, -this.D / 2 + 0.6 + k * 1.6); g.add(d); }
+    for (let r = 0; r <= rows; r++) for (let k = 0; k < this.W / 1.6; k++) { const d = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.01, 0.1), dash); d.position.set(-this.W / 2 + 0.6 + k * 1.6, 0.035, -this.D / 2 + ROAD / 2 + r * (LOT + ROAD)); g.add(d); }
+    this.beacons = []; const jobs = [];
+    lots.forEach((l, i) => {
+      const [x, z] = this.lotPos(i, cols);
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(LOT, 0.12, LOT), mat(l.b ? 0xd6d3c6 : l.owned ? 0x93cf80 : 0xb89c76)); slab.position.set(x, 0.06, z); slab.receiveShadow = true; slab.userData.lot = i; g.add(slab);
+      if (!l.owned) { // 待售：木牌
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.0, 0.08), mat(0x7a5230)); post.position.set(x - 1.8, 0.62, z + 1.8); g.add(post);
+        const board = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.06), mat(0xc0392b)); board.position.set(x - 1.8, 1.0, z + 1.85); g.add(board);
+        const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 0.07), mat(0xf6e7c1)); w.position.set(x - 1.8, 1.0, z + 1.86); g.add(w);
+      } else if (!l.b) { // 空地：四根木樁與繩
+        for (const [dx, dz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), mat(0x9a6a3a)); st.position.set(x + dx, 0.37, z + dz); g.add(st); }
+      } else {
+        jobs.push(instance(assetUrl(this.bmap[l.b.type].model)).then((o) => { o.position.set(x, 0.12, z); o.userData.lot = i; g.add(o); }).catch(() => null));
+        for (let s = 0; s < l.b.lv; s++) { const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), new THREE.MeshStandardMaterial({ color: 0xffd34d, emissive: 0x8a6a00 })); star.position.set(x - 1.9 + s * 0.4, 0.4, z + 2.2); g.add(star); }
+        const B = this.bmap[l.b.type];
+        if (B.kind === 'biz' && !l.b.mgr) { // 沒有管理者：紅色警示
+          const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), new THREE.MeshStandardMaterial({ color: 0xff3b30, emissive: 0xaa1108 })); beacon.position.set(x + 1.9, 2.4, z - 1.9); g.add(beacon); this.beacons.push(beacon);
+        }
+      }
+    });
+    await Promise.all(jobs);
+    if (tk !== this.token) return;
+    const first = !this.built; this.built = true;
+    this.root.clear(); this.root.add(g); this.group = g; this.markSel();
+    if (first) { const d = Math.max(this.W, this.D) * 0.8; this.controls.target.set(0, 0, 0); this.camera.position.set(d * 0.2, d * 0.85, d * 0.95); this.controls.maxDistance = d * 2.2; }
+  }
+  select(i) { this.sel = i; this.markSel(); }
+  markSel() {
+    if (this.ring && this.ring.parent) this.ring.parent.remove(this.ring);
+    this.ring = null;
+    if (this.sel < 0 || !this.group || !this.cols) return;
+    const [x, z] = this.lotPos(this.sel, this.cols);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.08, 8, 4), new THREE.MeshStandardMaterial({ color: 0xffd34d, emissive: 0xaa8a00 }));
+    ring.rotation.x = Math.PI / 2; ring.rotation.z = Math.PI / 4; ring.position.set(x, 0.25, z); ring.scale.set(1, 1, 1);
+    this.group.add(ring); this.ring = ring;
+  }
+  click(e) {
+    if (!this.group) return;
+    const r = this.renderer.domElement.getBoundingClientRect(); this.mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); this.ray.setFromCamera(this.mouse, this.camera);
+    const hits = this.ray.intersectObjects(this.group.children, true);
+    for (const h of hits) { let o = h.object; while (o && o.userData.lot === undefined) o = o.parent; if (o) { this.opt.onLot && this.opt.onLot(o.userData.lot); return; } }
+  }
+  onTick() { const t = (performance.now() - this.t0) / 1000; for (const b of this.beacons) b.scale.setScalar(0.85 + 0.25 * Math.sin(t * 4)); }
+}

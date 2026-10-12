@@ -6,7 +6,7 @@ out = os.path.join(root, 'downloads', 'house-quiz-game.zip')
 os.makedirs(os.path.dirname(out), exist_ok=True)
 if os.path.exists(out): os.remove(out)
 top = 'house-quiz-game'
-files = ['server.js', 'catalog.js', 'questions.js', 'funny.js', 'qbank_open.js', 'qbank_more.js', 'qbank_vocab.js', 'qbank_brain.js', 'qbank_phil.js', 'core.js', 'package.json', 'package-lock.json', 'README.md', 'Dockerfile']
+files = ['server.js', 'catalog.js', 'questions.js', 'funny.js', 'qbank_open.js', 'qbank_more.js', 'qbank_vocab.js', 'qbank_brain.js', 'qbank_phil.js', 'core.js', 'storage.js', 'minigames.js', 'qgroups.js', 'qbank_wrong.js', 'qbank_lyrics.js', 'render.yaml', 'DEPLOY.md', 'package.json', 'package-lock.json', 'README.md', 'Dockerfile', '.dockerignore']
 dirs = ['public', 'qdata', 'src', 'tools', 'downloads/question-bank.csv']
 
 BAT_HEAD = '@echo off\r\nchcp 65001 >nul\r\ncd /d "%~dp0"\r\ntitle 小屋大亨\r\nwhere node >nul 2>nul\r\nif errorlevel 1 (\r\n  echo [錯誤] 找不到 Node.js。\r\n  echo 請先安裝 Node.js（LTS 版）：https://nodejs.org ，安裝完成後重新雙擊本檔案。\r\n  start https://nodejs.org\r\n  pause\r\n  exit /b 1\r\n)\r\necho 目前的 Node.js 版本：\r\nnode -v\r\n'
@@ -45,7 +45,10 @@ readme = '''小屋大亨 — 測試版（古代武俠 Q 版・3D 房屋・答題
 
 【測試重點】
   1. 註冊帳號 → 選男/女、取名 → 看到 Q 版角色與初始服裝（更衣室可 360° 旋轉）
-  2. 商店：先花 300 元蓋商店 → 買家具/服飾（每件有持有上限）→ 回房屋用滑鼠擺放
+  2. 商店：買家具、牆壁、地毯、建材（每件有持有上限）→ 回「自宅」用滑鼠擺放；服飾只在「更衣室」販售
+  2.5 城市：先買一塊地（300 元）→ 蓋住宅（收租）或商業建築（商店、餐廳、學校、按摩店、KTV、診所、公司、百貨）
+      → 商業建築要到「人才市場」雇用管理者才有產值 → 定時回來「收取」。想快速測試，勾選「測試加速」（1 分鐘＝1 小時）
+  2.6 遊樂場：問答對戰、猜歌詞對戰、踩地雷、記憶翻牌、猜數字
   3. 連線問答：
      - 單人測試：按「對戰電腦」
      - 雙人測試：用兩個瀏覽器分頁（或同一個 Wi-Fi 的兩台電腦，網址用視窗裡的「區網」那一行）各註冊一個帳號，

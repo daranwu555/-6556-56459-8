@@ -1,7 +1,9 @@
-import { HouseView, DressView, hydrateThumbs, assetUrl } from './gfx.js';
+import { HouseView, DressView, CityView, hydrateThumbs, assetUrl } from './gfx.js';
+import { playMine, playMemory, playNum } from './mini.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let ws, P = null, CAT = null, CFG = null, gender = 'm', view = 'house', mode = 'login';
+let ALLT = {}, cityOffset = 0, cityStage = null, cityLot = -1, poolInfo = null, hiring = false, mgStop = null, mgInfo = null;
 let sel = null, houseCat = 'all', shopStyle = 'all', shopCat = 'all', boardTab = 'wins', board = null, visiting = null;
 let reconnectTimer;
 
@@ -28,11 +30,11 @@ function onMsg(m) {
     case 'authErr': $('#authMsg').textContent = m.msg; break;
     case 'welcome':
       localStorage.setItem('hq_token', m.token);
-      CAT = m.catalog; CFG = m.cfg; P = m.p;
-      if (CFG.offline) { $('#sOnline').parentElement.innerHTML = '🏮 單機版（存檔在這個瀏覽器）<span id="sOnline" class="hidden"></span>'; ['#qOnline', '#qCodeRow'].forEach((q) => $(q).classList.add('hidden')); }
+      CAT = m.catalog; CFG = m.cfg; P = m.p; ALLT = { ...CAT.items, ...CAT.buildings }; cityOffset = Date.now() - (P.city ? P.city.now : Date.now());
+      if (CFG.offline) { $('#sOnline').parentElement.innerHTML = '🏮 單機版（存檔在這個瀏覽器）<span id="sOnline" class="hidden"></span>'; ['#qOnline', '#lyOnline', '#qCodeRow'].forEach((q) => $(q).classList.add('hidden')); }
       $('#login').classList.add('hidden'); $('#game').classList.remove('hidden');
       renderAll(); break;
-    case 'profile': P = m.p; renderAll(); break;
+    case 'profile': P = m.p; cityOffset = Date.now() - P.city.now; renderAll(); break;
     case 'online': $('#sOnline').textContent = m.n; break;
     case 'err': toast('⚠️ ' + m.msg); break;
     case 'toast': toast(m.msg); break;
@@ -45,6 +47,9 @@ function onMsg(m) {
     case 'reveal': showReveal(m); break;
     case 'end': showEnd(m); break;
     case 'board': board = m; renderBoard(); break;
+    case 'cityPool': poolInfo = m; if (view === 'city') renderCityPanel(); break;
+    case 'mgReady': startMini(m); break;
+    case 'mgResult': mgResult(m); break;
     case 'likeOk': toast(m.reward ? `👍 已按讚，你獲得 ${m.reward} 元！（今日還可領 ${m.left} 次）` : '👍 已按讚（今日按讚獎勵已領滿）'); send({ t: 'board' }); break;
     case 'visit': visiting = m.v; renderVisit(); break;
   }
@@ -76,6 +81,7 @@ function renderAll() {
   document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.v === view));
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('hidden', v.id !== 'v-' + view));
   if (view === 'house') renderHouse();
+  if (view === 'city') renderCity();
   if (view === 'dress') renderDress();
   if (view === 'ware') renderWare();
   if (view === 'shop') renderShop();
@@ -87,7 +93,7 @@ function renderAll() {
 const I = (id) => CAT.items[id];
 const thumbImg = (it) => `<img data-thumb="${it.id}" class="${it.tex ? 'tx' : ''}" alt="${esc(it.name)}" ${it.tex ? `src="${assetUrl(it.tex)}"` : ''}>`;
 const tag = (it) => (it.style === 'none' ? '' : `<span class="tag ${it.style}">${CAT.styles[it.style]}</span>`);
-const hydrate = (el) => hydrateThumbs(el, CAT.items);
+const hydrate = (el) => hydrateThumbs(el, ALLT);
 const wornN = (id) => Object.values(P.worn).filter((x) => x === id).length;
 const inUse = (id) => work.placed.filter((x) => x.id === id).length + wornN(id) + (work.wall === id ? 1 : 0) + (work.carpet === id ? 1 : 0);
 const placedN = (id) => work.placed.filter((x) => x.id === id).length;
@@ -154,7 +160,7 @@ function renderHouse() {
   chips($('#houseChips'), cats.map((k) => [k, k === 'all' ? '全部' : CAT.cats[k].label]), houseCat, (k) => { houseCat = k; renderHouse(); });
   const tray = $('#houseTray'); tray.innerHTML = '';
   const ids = owned.filter((id) => houseCat === 'all' || I(id).cat === houseCat);
-  if (!ids.length) tray.innerHTML = '<span class="mut">還沒有家具，去商店逛逛吧！（需先建造商店）</span>';
+  if (!ids.length) tray.innerHTML = '<span class="mut">還沒有家具，去商店逛逛吧！</span>';
   ids.forEach((id) => {
     const it = I(id), kind = it.kind, d = document.createElement('div'); d.className = 'it' + (hold && hold.id === id ? ' sel' : '');
     let btn, fn;
@@ -187,7 +193,7 @@ function renderDress() {
     const own = P.owned[it.id] || 0, worn = P.worn[it.cat] === it.id, trying = tryOn[it.cat] === it.id;
     const d = document.createElement('div'); d.className = 'it' + (trying || (worn && !tryOn[it.cat]) ? ' sel' : '');
     d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}<br>${tag(it)}</div>` +
-      (own ? `<div class="mut">已擁有${worn ? '・穿著中' : ''}</div><button data-a="wear">${worn ? '脫下' : '穿上'}</button>` : `<div class="pr">💰 ${it.price}</div><button data-a="try">${trying ? '試穿中' : '試穿'}</button><button data-a="buy" ${P.shop && P.money >= it.price ? '' : 'disabled'}>購買</button>`);
+      (own ? `<div class="mut">已擁有${worn ? '・穿著中' : ''}</div><button data-a="wear">${worn ? '脫下' : '穿上'}</button>` : `<div class="pr">💰 ${it.price}</div><button data-a="try">${trying ? '試穿中' : '試穿'}</button><button data-a="buy" ${P.money >= it.price ? '' : 'disabled'}>購買</button>`);
     d.querySelectorAll('button').forEach((b) => b.onclick = () => {
       if (b.dataset.a === 'wear') { delete tryOn[it.cat]; send({ t: 'equip', slot: it.cat, id: worn ? null : it.id }); }
       else if (b.dataset.a === 'try') { tryOn[it.cat] = trying ? undefined : it.id; if (!tryOn[it.cat]) delete tryOn[it.cat]; renderDress(); }
@@ -198,7 +204,7 @@ function renderDress() {
   hydrate(tray);
   $('#newName').value = $('#newName').value || P.name; $('#renameBtn').textContent = `改名（${CFG.renameCost.toLocaleString()} 元）`; $('#renameBtn').disabled = P.money < CFG.renameCost; $('#renameHint').textContent = `註冊時取名免費，之後改名需要 ${CFG.renameCost.toLocaleString()} 元。`;
   $('#renameBtn').onclick = () => send({ t: 'rename', name: $('#newName').value });
-  $('#dressNote').textContent = (Object.keys(tryOn).length ? '👀 目前是試穿畫面（未購買的衣服不會被保存）。' : '') + (P.shop ? '' : ' 蓋好商店後才能購買服飾。') + ' 穿套裝時，會覆蓋上衣和下裝。';
+  $('#dressNote').textContent = (Object.keys(tryOn).length ? '👀 目前是試穿畫面（未購買的衣服不會被保存）。' : '') + ' 服飾只在更衣室販售；穿套裝時，會覆蓋上衣和下裝。';
 }
 
 // ───── 倉庫 ─────
@@ -213,8 +219,8 @@ function renderWare() {
     if (!ids.length) el.innerHTML = `<span class="mut">${empty}</span>`;
     ids.forEach((id) => {
       const it = I(id), d = document.createElement('div'); d.className = 'it';
-      d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)} ×${P.owned[id]}<br>${tag(it)}${inUse(id) ? `<br><span class="mut">使用中 ${inUse(id)}</span>` : ''}</div>` + (P.shop && !it.starter ? `<button>賣 ${Math.floor(it.price * CFG.sellRate)}</button>` : '');
-      if (P.shop && !it.starter) d.querySelector('button').onclick = () => send({ t: 'sell', id });
+      d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)} ×${P.owned[id]}<br>${tag(it)}${inUse(id) ? `<br><span class="mut">使用中 ${inUse(id)}</span>` : ''}</div>` + (!it.starter ? `<button>賣 ${Math.floor(it.price * CFG.sellRate)}</button>` : '');
+      if (!it.starter) d.querySelector('button').onclick = () => send({ t: 'sell', id });
       el.appendChild(d);
     });
     hydrate(el);
@@ -225,17 +231,11 @@ function renderWare() {
 
 // ───── 商店 ─────
 function renderShop() {
-  if (!P.shop) {
-    $('#shopInfo').innerHTML = `<h3>🏪 商店</h3><p>尚未建造商店。建造後即可購買建材、服飾與家具，並可賣出物品（賣出價 ${Math.round(CFG.sellRate * 100)}%）。</p><button class="pri" id="sBuild">建造商店（${CFG.shopBuild} 元）</button>`;
-    $('#sBuild').onclick = () => send({ t: 'buildShop' });
-    $('#shopBox').classList.add('hidden'); return;
-  }
-  $('#shopInfo').innerHTML = `<h3>🏪 商店</h3><p class="mut">每件商品都有「持有上限」，賣出或用掉（擴建消耗建材）後可再購買。服飾可到「更衣室」試穿。</p>`;
-  $('#shopBox').classList.remove('hidden');
+  $('#shopInfo').innerHTML = `<h3>🏪 商店</h3><p class="mut">這裡販售家具、牆壁、地毯與建材。每件商品都有「持有上限」，賣出或用掉（擴建消耗建材）後可再購買。服飾只在「更衣室」販售。</p>`;
   chips($('#shopStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles)], shopStyle, (k) => { shopStyle = k; renderShop(); });
-  chips($('#shopCat'), [['all', '全部類別'], ...Object.entries(CAT.cats).map(([k, v]) => [k, v.label])], shopCat, (k) => { shopCat = k; renderShop(); });
+  chips($('#shopCat'), [['all', '全部類別'], ...Object.entries(CAT.cats).filter(([, v]) => v.kind !== 'wear').map(([k, v]) => [k, v.label])], shopCat, (k) => { shopCat = k; renderShop(); });
   const tray = $('#shopTray'); tray.innerHTML = '';
-  Object.values(CAT.items).filter((it) => !it.starter && (shopStyle === 'all' || it.style === shopStyle) && (shopCat === 'all' || it.cat === shopCat)).forEach((it) => {
+  Object.values(CAT.items).filter((it) => !it.starter && it.kind !== 'wear' && (shopStyle === 'all' || it.style === shopStyle) && (shopCat === 'all' || it.cat === shopCat)).forEach((it) => {
     const own = P.owned[it.id] || 0, full = own >= it.limit;
     const d = document.createElement('div'); d.className = 'it';
     d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}<br>${tag(it)} <span class="mut">${CAT.cats[it.cat].label}</span></div><div class="pr">💰 ${it.price}</div><div class="mut">持有 ${own}/${it.limit}</div><button ${full || P.money < it.price ? 'disabled' : ''}>${full ? '已達上限' : '購買'}</button>`;
@@ -248,6 +248,7 @@ function renderShop() {
 // ───── 問答 ─────
 let qTimer, qEnd = 0, answered = false, curQ = null;
 function renderLobby() {
+  renderMiniCards();
   $('#myMul').textContent = P.novice ? `新手（Lv ≤ ${CFG.noviceLevel}）：連答 combo 平常 +20%，遇到老手時 +60%（×${CFG.noviceMul}）` : `老手：連答 combo +20%（×${CFG.comboMul}）`;
   $('#myMul').classList.toggle('vet', !P.novice);
   $('#mulHint').textContent = `等級 ≤ ${CFG.noviceLevel} 為新手，新手可以和任何人對戰；只有「新手遇到老手」時，新手的連答倍率才會提高。對戰電腦或雙方都是新手，一律 ×1.2。` + (P.styleBonus ? ` 你的房屋風格加成 +${P.styleBonus * 100}% ✨` : '');
@@ -256,6 +257,8 @@ function renderLobby() {
 function showQuiz(which) { ['Lobby', 'Wait', 'Play', 'End'].forEach((n) => $('#quiz' + n).classList.toggle('hidden', n.toLowerCase() !== which)); }
 $('#qOnline').onclick = () => send({ t: 'quiz', mode: 'online' });
 $('#qBot').onclick = () => send({ t: 'quiz', mode: 'bot' });
+$('#lyOnline').onclick = () => send({ t: 'quiz', mode: 'online', kind: 'lyrics' });
+$('#lyBot').onclick = () => send({ t: 'quiz', mode: 'bot', kind: 'lyrics' });
 $('#qCodeGo').onclick = () => send({ t: 'quiz', mode: 'code', code: $('#qCode').value });
 $('#qCancel').onclick = () => send({ t: 'cancelQueue' });
 $('#qReport').onclick = () => { if (curQ) { send({ t: 'report', qid: curQ, reason: '玩家回報' }); $('#qReport').classList.add('hidden'); } };
@@ -308,7 +311,7 @@ function showEnd(m) {
 }
 
 // ───── 排行 / 社交 ─────
-const BOARDS = { wins: ['勝場', (r) => r.wins + ' 勝'], combo: ['最高連擊', (r) => r.bestCombo + ' 連'], likes: ['房屋人氣', (r) => '❤️ ' + r.likes], level: ['等級', (r) => 'Lv.' + r.level], active: ['最近活躍', (r) => 'Lv.' + r.level] };
+const BOARDS = { wins: ['勝場', (r) => r.wins + ' 勝'], combo: ['最高連擊', (r) => r.bestCombo + ' 連'], likes: ['房屋人氣', (r) => '❤️ ' + r.likes], level: ['等級', (r) => 'Lv.' + r.level], city: ['城市產值', (r) => (r.cityRate || 0) + ' /時'], active: ['最近活躍', (r) => 'Lv.' + r.level] };
 function renderBoard() {
   chips($('#boardTabs'), Object.entries(BOARDS).map(([k, v]) => [k, v[0]]), boardTab, (k) => { boardTab = k; renderBoard(); });
   const rows = board ? board[boardTab] : [];
@@ -329,6 +332,102 @@ function renderVisit() {
   const like = $('#vLike'); like.textContent = (v.liked ? '❤️ 已按讚 ' : `🤍 按讚（你 +${CFG.likeReward} 元）　`) + v.likes; like.disabled = v.liked || v.pid === P.pid;
   like.onclick = () => send({ t: 'like', pid: v.pid, visit: 1 });
   $('#vClose').onclick = () => { visiting = null; renderVisit(); };
+}
+
+
+// ───── 城市 ─────
+const fmt = (n) => Math.round(n).toLocaleString();
+const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+const mgrBase = (B, lv) => B.income * Math.pow(CFG.city.incomeMul, lv - 1);
+const projRate = (B, lv, c) => { const base = mgrBase(B, lv); let eff = 0.7 + 0.2 * c.skill; if (c.spec === B.spec) eff *= 1.25; return base * eff - base * (0.1 + 0.05 * c.skill); };
+function ensureCityStage() {
+  if (cityStage) return;
+  cityStage = new CityView($('#city3d'), { onLot: (i) => { cityLot = i; hiring = false; cityStage.select(i); renderCityPanel(); } });
+  cityStage.setBuildings(CAT.buildings);
+  setInterval(() => { if (view === 'city') updateCityLive(); }, 1000);
+  $('#cityCollectAll').onclick = () => send({ t: 'cityCollect' });
+  if (window.__setFast) { $('#fastBox').classList.remove('hidden'); $('#fastBox').style.display = 'flex'; $('#fastChk').checked = window.__isFast(); $('#fastChk').onchange = (e) => { window.__setFast(e.target.checked); send({ t: 'cityView' }); }; }
+}
+const liveAcc = (l) => { if (!l.b || !l.b.rate) return 0; const hrs = Math.min(P.city.capHours, ((Date.now() - cityOffset - l.b.last) / 3600000) * P.city.timeScale); return Math.floor(l.b.rate * hrs); };
+function updateCityLive() {
+  let pend = 0; P.city.lots.forEach((l) => { pend += liveAcc(l); });
+  $('#cityTotal').textContent = `🏙️ 城市總產值 ${fmt(P.city.totalRate)} 元／小時`;
+  $('#cityPend').textContent = `　待收取 ${fmt(pend)} 元（每棟最多累積 ${P.city.capHours} 小時${P.city.timeScale > 1 ? `，目前時間加速 ×${P.city.timeScale}` : ''}）`;
+  const e = $('#cityAcc'); if (e && cityLot >= 0) e.textContent = fmt(liveAcc(P.city.lots[cityLot]));
+}
+function renderCity() {
+  ensureCityStage();
+  cityStage.setCity(P.city); cityStage.select(cityLot);
+  updateCityLive(); renderCityPanel();
+}
+function buildCard(B, lotIdx) {
+  const d = document.createElement('div'); d.className = 'bcard';
+  d.innerHTML = `<img data-thumb="${B.id}" alt=""><div class="t"><b>${B.emoji} ${B.name}</b><br><span class="mut">${B.desc}</span><br>💰 建造 ${fmt(B.cost)}　📈 ${B.kind === 'res' ? '租金' : '產值'} ${fmt(B.income)}/時${B.kind === 'biz' ? `　專長：${B.spec}` : ''}</div><button ${P.money >= B.cost ? '' : 'disabled'}>建造</button>`;
+  d.querySelector('button').onclick = () => send({ t: 'cityBuild', i: lotIdx, type: B.id });
+  return d;
+}
+function renderCityPanel() {
+  const box = $('#cityPanel'), c = P.city;
+  if (cityLot < 0) { box.innerHTML = `<h3>🏙️ 我的城市</h3><p>點選上方地圖的地塊開始經營。你已經擁有自宅，其他土地要先購買（下一塊 💰${fmt(c.landPrice)}）。</p>`; return; }
+  const l = c.lots[cityLot];
+  const head = `<h3>地塊 #${cityLot + 1}</h3>`;
+  if (!l.owned) { box.innerHTML = head + `<p>這是一塊待售的空地。買下後就能在上面蓋房子或商業建築。</p><button class="pri" id="landBuy" ${P.money >= c.landPrice ? '' : 'disabled'}>購買土地（${fmt(c.landPrice)} 元）</button>`; $('#landBuy').onclick = () => send({ t: 'cityBuyLand', i: cityLot }); return; }
+  if (!l.b) {
+    box.innerHTML = head + '<p>這是你的空地，選擇要蓋什麼：</p><h3>🏘️ 住宅（收租，不需管理者）</h3><div class="tray" id="bRes"></div><h3 style="margin-top:12px">🏬 商業（需雇用管理者才有產值）</h3><div class="tray" id="bBiz"></div>';
+    Object.values(CAT.buildings).filter((B) => B.kind === 'res').forEach((B) => $('#bRes').appendChild(buildCard(B, cityLot)));
+    Object.values(CAT.buildings).filter((B) => B.kind === 'biz').forEach((B) => $('#bBiz').appendChild(buildCard(B, cityLot)));
+    hydrate(box); return;
+  }
+  const B = CAT.buildings[l.b.type];
+  if (B.kind === 'home') { box.innerHTML = head + `<h3>🏠 自宅</h3><p>${B.desc}</p><button class="pri" id="goHome">進入房屋（裝潢 / 擺放家具）</button>`; $('#goHome').onclick = () => { view = 'house'; renderAll(); }; return; }
+  let h = `${head}<div class="row"><img data-thumb="${B.id}" style="width:96px;height:96px;object-fit:contain" alt=""><div class="grow"><h3>${B.emoji} ${B.name}　<span class="stars">${stars(l.b.lv)}</span></h3><div class="mut">${B.desc}</div>`;
+  h += `<div>📈 ${B.kind === 'res' ? '租金' : '淨產值'}：<b>${fmt(l.b.rate)}</b> 元／小時${B.kind === 'biz' ? `（管理者薪資 ${fmt(l.b.wage)}/時已扣除）` : ''}</div><div>💰 待收取：<b id="cityAcc">${fmt(liveAcc(l))}</b> 元</div></div></div><div class="row" style="margin-top:10px">`;
+  h += `<button class="pri" id="bCollect">收取</button>`;
+  h += l.b.lv < CFG.city.maxLv ? `<button id="bUp" ${P.money >= l.b.upCost ? '' : 'disabled'}>升級到 Lv.${l.b.lv + 1}（${fmt(l.b.upCost)} 元，產值 ×${CFG.city.incomeMul}）</button>` : '<span class="mut">已是最高等級</span>';
+  h += `<button id="bDemo">拆除（退回 ${fmt(B.cost * CFG.city.demolishRefund)} 元）</button></div>`;
+  if (B.kind === 'biz') {
+    h += '<h3 style="margin-top:14px">👔 管理者</h3>';
+    if (l.b.mgr) { const m = l.b.mgr, match = m.spec === B.spec; h += `<div class="bcard" style="max-width:420px"><div class="t"><b>${m.name}</b>　<span class="stars">${stars(m.skill)}</span><br>專長：${m.spec} ${match ? '<span class="have">（與本行對口，效率 ×1.25）</span>' : `<span class="mut">（本行需要「${B.spec}」專長）</span>`}<br>薪資：${fmt(l.b.wage)} 元／小時</div><button id="bFire">解雇</button></div>`; }
+    else h += `<p class="need">⚠️ 尚未雇用管理者，這間店目前沒有產值。</p><button class="pri" id="bHire">${hiring ? '收起人才市場' : '開啟人才市場'}</button>`;
+    if (hiring && !l.b.mgr) {
+      h += `<div class="row" style="margin-top:8px"><span class="mut">人才名單每 ${Math.round((poolInfo ? poolInfo.ttl : 21600000) / 3600000)} 小時更新一次</span><button id="poolRefresh">重新徵才（${poolInfo ? poolInfo.refreshCost : 100} 元）</button></div><div class="tray" id="poolBox" style="margin-top:8px">`;
+      (poolInfo ? poolInfo.pool : []).forEach((cd) => { const fee = Math.round(B.cost * CFG.city.hireRate * cd.skill), net = projRate(B, l.b.lv, cd); h += `<div class="bcard" style="min-width:230px"><div class="t"><b>${cd.name}</b> <span class="stars">${stars(cd.skill)}</span><br>專長：${cd.spec}${cd.spec === B.spec ? ' <span class="have">✔對口</span>' : ''}<br>聘用費 ${fmt(fee)}　預估淨產值 <b>${fmt(net)}</b>/時</div><button data-c="${cd.id}" ${P.money >= fee ? '' : 'disabled'}>聘用</button></div>`; });
+      h += '</div>';
+    }
+  }
+  box.innerHTML = h; hydrate(box);
+  $('#bCollect').onclick = () => send({ t: 'cityCollect', i: cityLot });
+  if ($('#bUp')) $('#bUp').onclick = () => send({ t: 'cityUpgrade', i: cityLot });
+  $('#bDemo').onclick = () => { if ($('#bDemo').dataset.sure) send({ t: 'cityDemolish', i: cityLot }); else { $('#bDemo').dataset.sure = 1; $('#bDemo').textContent = '再按一次確認拆除'; } };
+  if ($('#bFire')) $('#bFire').onclick = () => send({ t: 'cityFire', i: cityLot });
+  if ($('#bHire')) $('#bHire').onclick = () => { hiring = !hiring; if (hiring) send({ t: 'cityPool' }); renderCityPanel(); };
+  if ($('#poolRefresh')) $('#poolRefresh').onclick = () => send({ t: 'cityRefreshPool' });
+  box.querySelectorAll('#poolBox button[data-c]').forEach((b) => b.onclick = () => send({ t: 'cityHire', i: cityLot, cid: b.dataset.c }));
+}
+
+// ───── 小遊戲 ─────
+function renderMiniCards() {
+  const M = CFG.minigames, box = $('#mgCards'); $('#mgCap').textContent = M.cap; box.innerHTML = '';
+  const add = (title, desc, fee, reward, startFn, extra) => {
+    const d = document.createElement('div'); d.className = 'it'; d.style.width = '230px';
+    d.innerHTML = `<div class="nm" style="min-height:0"><b>${title}</b><br><span class="mut">${desc}</span></div><div class="pr">參加費 ${fee}　獎金 ${reward}</div>${extra || ''}<button class="pri">開始</button>`;
+    d.querySelector('button').onclick = () => startFn(d); box.appendChild(d);
+  };
+  Object.entries(M.mine).forEach(([k, L]) => add('💣 踩地雷', L.name, L.fee, L.reward, () => send({ t: 'mgStart', game: 'mine', level: k })));
+  add('🀄 記憶翻牌', M.memory.name, M.memory.fee, M.memory.reward, () => send({ t: 'mgStart', game: 'memory' }));
+  add('🔢 猜數字 1A2B', M.num.name, M.num.fee, M.num.reward, () => send({ t: 'mgStart', game: 'num' }));
+}
+function startMini(m) {
+  mgInfo = m; if (mgStop) mgStop();
+  $('#quizLobby').classList.add('hidden'); $('#mgLobby').classList.add('hidden'); $('#mgPlay').classList.remove('hidden'); $('#mgMsg').textContent = '';
+  const title = { mine: `💣 踩地雷　${CFG.minigames.mine[m.level] ? CFG.minigames.mine[m.level].name : ''}`, memory: '🀄 記憶翻牌', num: '🔢 猜數字 1A2B' }[m.game]; $('#mgTitle').textContent = title;
+  const host = $('#mgHost'), done = (log, win, secret) => { send({ t: 'mgEnd', log }); mgInfo.secret = secret; };
+  if (m.game === 'mine') mgStop = playMine(host, m, done); else if (m.game === 'memory') mgStop = playMemory(host, m, done); else mgStop = playNum(host, m, done);
+}
+function mgResult(r) {
+  const back = '<div style="margin-top:10px"><button class="pri" id="mgBack">返回遊樂場</button></div>';
+  $('#mgMsg').innerHTML = (r.win ? `🎉 挑戰成功！${r.reward ? `獎金 +${r.reward} 元（今天還可領 ${r.left} 次）` : ''}` : '😢 挑戰失敗') + (r.note ? `<div class="mut">${r.note}</div>` : '') + (mgInfo && mgInfo.secret && !r.win ? `<div class="mut">密碼是 ${mgInfo.secret}</div>` : '') + back;
+  $('#mgBack').onclick = () => { if (mgStop) mgStop(); mgStop = null; $('#mgPlay').classList.add('hidden'); $('#quizLobby').classList.remove('hidden'); $('#mgLobby').classList.remove('hidden'); };
 }
 
 connect();

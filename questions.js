@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const CATEGORIES = ['地理', '天文', '歷史', '會計', '護理', '科學', '生物', '生活常識', '體育', '文學藝術', '科技', '腦筋急轉彎', '哲學'];
+const CATEGORIES = ['地理', '天文', '歷史', '會計', '護理', '科學', '生物', '生活常識', '體育', '文學藝術', '科技', '腦筋急轉彎', '哲學', '猜歌詞'];
 
 // [分類, 題目, 正解, 錯1, 錯2, 錯3]
 const SEED = [
@@ -292,15 +292,27 @@ const BANK = [
   ...require('./qbank_vocab').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...require('./qbank_brain').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...require('./qbank_phil').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
+  ...require('./qbank_lyrics').map(([t, a, w1, w2, w3, src]) => mkItem('猜歌詞', `猜歌詞（${src}）：「${t}」`, a, [w1, w2, w3])),
   ...require('./qdata/math.json').map((x) => mkItem(x.c, x.q, x.a, x.w, x.t, '程式生成')),
 ];
 const EXTERNAL = loadDir(path.join(__dirname, 'data', 'questions'), '外部匯入');
 const ALL = [...BANK, ...EXTERNAL];
 
+// 合理的錯誤選項：先套用手動指定，再依「同類名單」決定干擾選項來源
+const WRONG = require('./qbank_wrong');
+const GROUPS = require('./qgroups');
+const groupOf = {};
+for (const [g, names] of Object.entries(GROUPS)) for (const n of names) if (!(n in groupOf)) groupOf[n] = g;
+for (const it of ALL) {
+  if (WRONG[it.q] && !(it.w && it.w.length >= 3)) it.w = WRONG[it.q];
+  if (!(it.w && it.w.length >= 3) && groupOf[it.a]) it.t = '群:' + groupOf[it.a];
+}
+
 // 干擾選項的候選池：同標籤 > 同分類 > 全部
 const poolTag = new Map(), poolCat = new Map(), poolAll = new Set();
 const addTo = (m, k, v) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(v); };
 for (const it of ALL) for (const v of [it.a, ...(it.w || [])]) { poolAll.add(v); addTo(poolCat, it.c, v); if (it.t) addTo(poolTag, it.t, v); }
+for (const [g, names] of Object.entries(GROUPS)) for (const n of names) addTo(poolTag, '群:' + g, n);
 
 const hasNum = (s) => /\d/.test(s);
 const NUM = /-?\d[\d,]*(?:\.\d+)?/g;
@@ -357,17 +369,17 @@ function bankSize() { const r = { total: ALL.length }; for (const it of ALL) r[i
 
 const { funnyFor } = require('./funny');
 // 搞笑選項比例：每個「錯誤選項」有這個機率被換成搞笑選項（0=不搞笑，1=全部搞笑）
-const FUNNY_RATE = process.env.FUNNY_RATE !== undefined ? Number(process.env.FUNNY_RATE) : 0.6;
+const FUNNY_RATE = process.env.FUNNY_RATE !== undefined ? Number(process.env.FUNNY_RATE) : 0; // 預設不搞笑（選項要合理）
 function wrongOptions(item) {
   const wrong = distractors(item), taken = new Set([item.a, ...wrong]);
   return wrong.map((w) => { if (Math.random() >= FUNNY_RATE) return w; const f = funnyFor(item, taken); if (f) taken.add(f); return f || w; });
 }
 
 const GEN_P = 0.25;
-function buildMatchQuestions(n = 10, exclude = new Set()) {
+function buildMatchQuestions(n = 10, exclude = new Set(), onlyCat = null) {
   const used = new Set(exclude), list = [];
   const byCat = new Map(); for (const it of ALL) { if (!byCat.has(it.c)) byCat.set(it.c, []); byCat.get(it.c).push(it); }
-  const cats = [...new Set([...CATEGORIES.filter((c) => c !== '腦筋急轉彎' || byCat.has(c)), ...[...byCat.keys()]])];
+  const cats = onlyCat ? [onlyCat] : [...new Set([...CATEGORIES, ...[...byCat.keys()]])];
   let guard = 0;
   while (list.length < n && guard++ < 800) {
     const cat = pick(cats);

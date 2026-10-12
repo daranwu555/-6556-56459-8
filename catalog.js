@@ -128,4 +128,26 @@ for (const [g, name] of [['m', '武俠長袍'], ['f', '襦裙']]) {
   ITEMS[`shoes_start_${g}`] = { id: `shoes_start_${g}`, cat: 'shoes', style: 'none', name: g === 'm' ? '初始・武俠布靴' : '初始・繡花布鞋', price: 0, kind: 'wear', limit: 1, starter: true, gender: g, model: `models/wear/shoes_start_${g}.glb`, emoji: '🥾' };
 }
 
-module.exports = { STYLES, CATS, ITEMS };
+// ═════════ 城市建築 ═════════
+// kind: home 自宅 / res 住宅（收租，不用管理者）/ biz 商業（需要雇用管理者才有產值）
+// cost 建造費；income 一級時每小時產值；spec 管理者專長對口（對口時效率 ×1.25）
+const SPECS = ['零售', '餐飲', '教育', '養生', '娛樂', '醫療', '管理'];
+const BUILDINGS = {
+  home: { id: 'home', name: '自宅', kind: 'home', cost: 0, income: 0, emoji: '🏠', desc: '你的家。點選可進入房屋，自由裝潢與擺放家具。' },
+  res_hut: { id: 'res_hut', name: '平房', kind: 'res', cost: 600, income: 12, emoji: '🛖', desc: '簡樸的小平房，出租收取房租。' },
+  res_town: { id: 'res_town', name: '透天厝', kind: 'res', cost: 1800, income: 40, emoji: '🏘️', desc: '兩層樓的透天厝，租金不錯。' },
+  res_apt: { id: 'res_apt', name: '公寓大樓', kind: 'res', cost: 5000, income: 120, emoji: '🏢', desc: '多戶出租的公寓大樓。' },
+  res_villa: { id: 'res_villa', name: '別墅', kind: 'res', cost: 12000, income: 260, emoji: '🏡', desc: '帶泳池的高級別墅，租金可觀。' },
+  res_mansion: { id: 'res_mansion', name: '豪宅', kind: 'res', cost: 30000, income: 560, emoji: '🏛️', desc: '氣派豪宅，頂級租客搶著住。' },
+  biz_store: { id: 'biz_store', name: '便利商店', kind: 'biz', cost: 1200, income: 55, spec: '零售', emoji: '🏪', desc: '24 小時營業的便利商店。' },
+  biz_food: { id: 'biz_food', name: '餐廳', kind: 'biz', cost: 2200, income: 100, spec: '餐飲', emoji: '🍜', desc: '客人川流不息的中式餐廳。' },
+  biz_school: { id: 'biz_school', name: '學校', kind: 'biz', cost: 3000, income: 130, spec: '教育', emoji: '🏫', desc: '開設課程收取學費。' },
+  biz_massage: { id: 'biz_massage', name: '按摩店', kind: 'biz', cost: 2400, income: 105, spec: '養生', emoji: '💆', desc: '舒壓養生，熟客很多。' },
+  biz_ktv: { id: 'biz_ktv', name: 'KTV', kind: 'biz', cost: 5000, income: 230, spec: '娛樂', emoji: '🎤', desc: '夜晚最熱鬧的歡唱據點。' },
+  biz_clinic: { id: 'biz_clinic', name: '診所', kind: 'biz', cost: 6000, income: 280, spec: '醫療', emoji: '🏥', desc: '社區診所，穩定的看診收入。' },
+  biz_company: { id: 'biz_company', name: '公司', kind: 'biz', cost: 9000, income: 420, spec: '管理', emoji: '🏙️', desc: '玻璃帷幕辦公大樓，產值最高的行業之一。' },
+  biz_mall: { id: 'biz_mall', name: '百貨公司', kind: 'biz', cost: 20000, income: 900, spec: '零售', emoji: '🛍️', desc: '大型購物中心，人潮與營收都驚人。' },
+};
+for (const b of Object.values(BUILDINGS)) b.model = `models/city/${b.id}.glb`;
+
+module.exports = { STYLES, CATS, ITEMS, BUILDINGS, SPECS };

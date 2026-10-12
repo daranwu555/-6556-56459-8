@@ -75,6 +75,23 @@ td,th{padding:6px 8px;border-bottom:1px solid #7a623644;text-align:left}
 th{color:#f0cf7e}
 tr.link{cursor:pointer}tr.link:hover{background:#ffffff10}
 .need{color:var(--bad)}.have{color:#7fd1b6}
+
+.mine{display:grid;gap:2px;margin:10px 0;width:100%}
+.mc{aspect-ratio:1;padding:0;font-weight:700;font-size:clamp(11px,2.6vw,16px);background:linear-gradient(#5b4a36,#43362a);border:1px solid #1a120b;border-radius:3px;box-shadow:none;color:#fff}
+.mc.o{background:#201912;border-color:#0e0a07}
+.mine.done .mc{pointer-events:none}
+.mem{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:420px;margin:10px 0}
+.mcard{aspect-ratio:1;font-size:clamp(26px,8vw,46px);padding:0;position:relative;background:linear-gradient(#a8322b,#7a1d1a);border:1px solid var(--acc)}
+.mcard .front{display:none}.mcard.up .front,.mcard.ok .front{display:inline}.mcard.up .back,.mcard.ok .back{display:none}
+.mcard.up{background:linear-gradient(#f2e8d0,#d9c9a0)}.mcard.ok{background:linear-gradient(#4f9a86,#2a6355);box-shadow:0 0 10px #4f9a86aa}
+.numhist{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-width:360px}
+.nh{display:flex;justify-content:space-between;gap:10px;padding:6px 12px;background:#00000040;border:1px solid var(--line);border-radius:4px}
+.nh b{letter-spacing:.3em;font-size:18px}
+input.bad{outline:2px solid var(--bad)}
+.bcard{display:flex;gap:10px;align-items:center;background:linear-gradient(#3b2e20,#2c2217);border:1px solid var(--line);border-radius:5px;padding:8px;min-width:250px;flex:1}
+.bcard img{width:64px;height:64px;object-fit:contain}
+.bcard .t{flex:1;font-size:13px;line-height:1.4}
+.stars{color:#f0c24a;letter-spacing:2px}
 </style>
 </head>
 <body>
@@ -114,11 +131,12 @@ tr.link{cursor:pointer}tr.link:hover{background:#ffffff10}
     <div class="bar" style="margin-top:8px"><i id="expBar"></i></div>
     <div class="mut" id="expTxt"></div>
     <nav>
-      <button data-v="house">🏠 房屋</button>
+      <button data-v="house">🏠 自宅</button>
+      <button data-v="city">🏙️ 城市</button>
       <button data-v="ware">📦 倉庫</button>
       <button data-v="shop">🏪 商店</button>
       <button data-v="dress">👗 更衣室</button>
-      <button data-v="quiz">🎯 連線問答</button>
+      <button data-v="quiz">🎮 遊樂場</button>
       <button data-v="social">🏆 排行/社交</button>
     </nav>
   </div>
@@ -158,6 +176,18 @@ tr.link{cursor:pointer}tr.link:hover{background:#ffffff10}
     </div>
   </section>
 
+  <section id="v-city" class="view hidden">
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <b id="cityTotal"></b><span class="mut" id="cityPend"></span><span class="grow"></span><label id="fastBox" class="hidden mut" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="fastChk" style="width:auto;margin:0"> 測試加速（1 分鐘＝1 小時）</label>
+        <button class="pri" id="cityCollectAll">💰 全部收取</button>
+      </div>
+      <div class="stage3d" id="city3d"></div>
+      <div class="mut" style="margin-top:6px">先買下土地，再蓋房子或商業建築。商業建築要<b>雇用管理者</b>才會有產值（紅色光球＝還沒有管理者）。點選地塊查看。拖曳旋轉、滾輪縮放。</div>
+    </div>
+    <div class="card" id="cityPanel"></div>
+  </section>
+
   <section id="v-ware" class="view hidden">
     <div class="card" id="wareInfo"></div>
     <div class="card"><h3>🧱 建材（佔倉庫空間）</h3><div class="tray" id="matTray"></div></div>
@@ -175,8 +205,8 @@ tr.link{cursor:pointer}tr.link:hover{background:#ffffff10}
 
   <section id="v-quiz" class="view hidden">
     <div class="card" id="quizLobby">
-      <h3>🎯 連線問答</h3>
-      <p>每場 10 題選擇題（所有問答題都會自動變成四選一），參加費 <b>50 元</b>。答對賺錢，連答有加成；每答一題都有 10 經驗！</p>
+      <h3>⚔️ 問答對戰</h3>
+      <p>每場 10 題選擇題，參加費 <b>50 元</b>。答對賺錢，連答有加成；每答一題都有 10 經驗！</p>
       <p><span class="badge" id="myMul"></span> <span class="mut" id="mulHint"></span></p>
       <div class="mut">答對 10 元 → 連答依序疊加倍率　連 5 題 +20元+10經驗　連 8 題 +50元+30經驗　全對 +100元+50經驗</div>
       <div class="row" style="margin-top:14px">
@@ -184,8 +214,17 @@ tr.link{cursor:pointer}tr.link:hover{background:#ffffff10}
         <button id="qBot">🤖 對戰電腦</button>
       </div>
       <div class="row" id="qCodeRow" style="margin-top:10px"><input id="qCode" maxlength="8" placeholder="邀請碼（3~8 英數字）" style="width:200px;margin:0"><button id="qCodeGo">👥 好友對戰</button><span class="mut">與朋友輸入相同邀請碼即可對戰</span></div>
+      <h3 style="margin-top:18px">🎼 猜歌詞對戰</h3>
+      <div class="mut">10 題古詩詞與傳統童謠的填空（皆為公共領域作品），規則與獎勵同上。</div>
+      <div class="row" style="margin-top:10px"><button class="pri" id="lyOnline">🌐 線上配對</button><button id="lyBot">🤖 對戰電腦</button></div>
       <p class="mut" id="qStat"></p>
     </div>
+    <div class="card" id="mgLobby">
+      <h3>🎮 小遊戲</h3>
+      <div class="mut">單人挑戰：付參加費，贏了拿獎金。每種遊戲每天最多領 <b id="mgCap">5</b> 次獎勵；輸贏由伺服器重播你的操作驗證。</div>
+      <div class="tray" id="mgCards" style="margin-top:12px"></div>
+    </div>
+    <div class="card hidden" id="mgPlay"><div class="row"><h3 class="grow" id="mgTitle"></h3></div><div id="mgHost"></div><div id="mgMsg" class="combo" style="margin-top:10px"></div></div>
     <div class="card hidden" id="quizWait"><h3>🔍 配對中…</h3><p class="mut" id="waitTxt">等待其他玩家加入</p><button id="qCancel">取消（退還參加費）</button></div>
     <div class="card hidden" id="quizPlay">
       <div class="vs">

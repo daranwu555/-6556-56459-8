@@ -1,0 +1,14 @@
+# Render 免費方案部署設定（Blueprint）。存檔放在外部 Postgres（例如 Neon 免費方案），因為 Render 免費主機的磁碟不會保留。
+services:
+  - type: web
+    name: house-quiz-tycoon
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false   # 部署時在 Render 網頁貼上 Neon 的連線字串

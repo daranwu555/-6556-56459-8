@@ -3,6 +3,7 @@
 const path = require('path');
 const { Model, box, cyl, sphere, torus, png, hexRgb } = require('./glb');
 const CH = require('./character');
+const CITY = require('./buildings');
 const OUT = path.join(__dirname, '..', 'public');
 const PI = Math.PI;
 
@@ -199,6 +200,7 @@ function run() {
   for (const [id, fn] of Object.entries(F)) { const style = id.split('_')[1]; const m = new Model(); fn(m, PAL[style]); m.save(path.join(OUT, 'models/furniture', id + '.glb')); n++; }
   for (const [id, fn] of Object.entries(W)) { const style = id.split('_')[1]; const m = new Model(); fn(m, PAL[style]); m.save(path.join(OUT, 'models/wear', id + '.glb'), CH.chibi); n++; }
   for (const [id, fn] of Object.entries(MAT)) { const m = new Model(); fn(m); m.save(path.join(OUT, 'models/material', id + '.glb')); n++; }
+  for (const [id, fn] of Object.entries(CITY.B)) { const m = new Model(); fn(m); m.save(path.join(OUT, 'models/city', id + '.glb')); n++; }
   for (const g of ['m', 'f']) {
     CH.body(g).save(path.join(OUT, `models/body_${g}.glb`), CH.chibi); CH.hairBase(g).save(path.join(OUT, `models/hair_${g}.glb`), CH.chibi); CH.hairTop(g).save(path.join(OUT, `models/hairtop_${g}.glb`), CH.chibi); n += 3;
   }

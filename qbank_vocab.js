@@ -14,14 +14,20 @@ old 老的|young 年輕的|clean 乾淨的|dirty 髒的|heavy 重的|light 輕�
 run 跑|walk 走|jump 跳|swim 游泳|sing 唱歌|dance 跳舞|read 閱讀|write 寫|listen 聽|speak 說|
 eat 吃|drink 喝|sleep 睡覺|wash 洗|cook 煮|buy 買|sell 賣|open 打開|close 關上|study 讀書|
 morning 早晨|afternoon 下午|evening 傍晚|night 夜晚|today 今天|tomorrow 明天|yesterday 昨天|week 星期|month 月|year 年|
-Monday 星期一|Tuesday 星期二|Wednesday 星期三|Thursday 星期四|Friday 星期五|Saturday 星期六|Sunday 星期日|spring 春天|summer 夏天|autumn 秋天|
-winter 冬天|sunny 晴朗的|rainy 下雨的|cloudy 多雲的|windy 有風的|snowy 下雪的|mountain 山|river 河|ocean 海洋|forest 森林|
+Monday 星期一|Tuesday 星期二|Wednesday 星期三|Thursday 星期四|Friday 星期五|Saturday 星期六|Sunday 星期日|spring 春天|summer 夏天|autumn 秋天|winter 冬天|
+sunny 晴朗的|rainy 下雨的|cloudy 多雲的|windy 有風的|snowy 下雪的|mountain 山|river 河|ocean 海洋|forest 森林|
 computer 電腦|telephone 電話|television 電視|camera 相機|bicycle 腳踏車|train 火車|airplane 飛機|bus 公車|boat 船|taxi 計程車|
 friend 朋友|family 家庭|country 國家|city 城市|village 村莊|street 街道|bridge 橋|garden 花園|kitchen 廚房|bedroom 臥室|
 language 語言|question 問題|answer 答案|problem 難題|idea 想法|dream 夢想|story 故事|music 音樂|movie 電影|picture 圖片|
 health 健康|medicine 藥|fever 發燒|headache 頭痛|cough 咳嗽|exercise 運動|vegetable 蔬菜|fruit 水果|money 金錢|price 價格|
 environment 環境|pollution 污染|recycle 回收|energy 能源|weather 天氣|earthquake 地震|typhoon 颱風|volcano 火山|island 島嶼|desert 沙漠`;
-module.exports = WORDS.replace(/\n/g, '').split('|').map((s) => s.trim()).filter(Boolean).map((s) => {
-  const sp = s.search(/ [^\x00-\x7F]/); // 第一個接中文的空白
-  return ['英文|單字中文', `英文單字「${s.slice(0, sp)}」的中文意思是？`, s.slice(sp + 1)];
+// 依主題分組（每一行是同一主題）→ 干擾選項只會出現同主題的中文（顏色配顏色、動物配動物…）
+const TAGS = ['食物水果', '動物', '動物', '顏色', '家人', '職業', '地點', '文具', '食物水果', '形容詞', '形容詞', '形容詞', '動詞', '動詞', '時間', '時間', '自然', '器具交通', '生活名詞', '生活名詞', '生活名詞', '自然'];
+const rows = [];
+WORDS.split('\n').forEach((line, li) => {
+  line.split('|').map((x) => x.trim()).filter(Boolean).forEach((s) => {
+    const sp = s.search(/ [^\x00-\x7F]/); // 第一個接中文的空白
+    rows.push([`英文|${TAGS[li] || '單字'}`, `英文單字「${s.slice(0, sp)}」的中文意思是？`, s.slice(sp + 1)]);
+  });
 });
+module.exports = rows;

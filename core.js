@@ -1,5 +1,6 @@
 // 遊戲核心（Node 伺服器與瀏覽器單機版共用）。與傳輸方式（WebSocket / 本機）無關。
-const { STYLES, CATS, ITEMS } = require('./catalog');
+const { STYLES, CATS, ITEMS, BUILDINGS, SPECS } = require('./catalog');
+const MG = require('./minigames');
 const { buildMatchQuestions, bankSize } = require('./questions');
 
 // env: { storage, hashPw(pw,salt), randomHex(n), safeEqual(a,b), startMoney, startLevel, offline }
@@ -39,7 +40,10 @@ const CFG = {
     { cols: 10, rows: 6, money: 2000, mats: { material_brick: 20, material_cement: 20, material_glass: 15, material_steel: 20 } },
   ],
   seenKeep: 300,             // 每位玩家記住最近見過的題數，盡量不重複
+  // 城市：地塊、建築、管理者
+  city: { cols: 5, rows: 4, homeLot: 7, landBase: 300, landMul: 1.35, capHours: 12, poolSize: 4, poolTtlMs: 6 * 3600e3, poolRefreshCost: 100, maxLv: 5, upgradeMul: 0.8, incomeMul: 1.6, demolishRefund: 0.4, hireRate: 0.06 },
 };
+const tScale = () => Number(env.timeScale ? env.timeScale() : 1) || 1; // 遊戲時間倍率（測試用：1 分鐘 = 1 小時）
 const expNeed = (lv) => Math.round(CFG.firstLevelExp * Math.pow(CFG.levelMul, lv - 1));
 const gridOf = (p) => CFG.houseLevels[p.houseLv - 1];
 
@@ -52,6 +56,8 @@ const gridOf = (p) => CFG.houseLevels[p.houseLv - 1];
   for (const r of env.storage.accounts()) {
     const p = JSON.parse(r.profile);
     if (p.house.placed.some((x) => !Number.isFinite(x.z))) p.house.placed = []; // 舊版格子資料
+    if (!p.city) p.city = newCity();                                              // 舊版存檔沒有城市
+    if (!p.mgDay) p.mgDay = { d: '', mine: 0, memory: 0, num: 0 };
     players.set(r.username, p); byToken.set(p.token, p); byPid.set(p.pid, p);
   }
   for (const r of env.storage.qstats()) qstats.set(r.id, { n: r.n, c: r.c });
@@ -79,14 +85,57 @@ function newProfile(username, password, name, gender) {
     shop: false, warehouseLv: 0,
     likes: 0, likedBy: [], seen: [], lastSeen: Date.now(),
     stats: { played: 0, wins: 0, bestCombo: 0 },
+    city: newCity(), mgDay: { d: '', mine: 0, memory: 0, num: 0 },
   };
+}
+
+// ───────── 城市 ─────────
+function newCity() {
+  const c = CFG.city, lots = Array.from({ length: c.cols * c.rows }, () => ({ owned: false, b: null }));
+  lots[c.homeLot] = { owned: true, b: { type: 'home', lv: 1, mgr: null, last: Date.now() } };
+  return { lots, pool: [], poolAt: 0, bought: 0 };
+}
+const landPrice = (city) => Math.round(CFG.city.landBase * Math.pow(CFG.city.landMul, city.bought));
+const baseIncome = (b) => BUILDINGS[b.type].income * Math.pow(CFG.city.incomeMul, b.lv - 1);
+const bWage = (b) => (b.mgr ? baseIncome(b) * (0.1 + 0.05 * b.mgr.skill) : 0);
+function bRate(b) { // 每「遊戲小時」淨產值
+  const B = BUILDINGS[b.type];
+  if (B.kind === 'home') return 0;
+  const base = baseIncome(b);
+  if (B.kind === 'res') return base;
+  if (!b.mgr) return 0; // 商業建築沒有管理者就不會有產值
+  let eff = 0.7 + 0.2 * b.mgr.skill; if (b.mgr.spec === B.spec) eff *= 1.25;
+  return Math.max(0, base * eff - bWage(b));
+}
+const accruedOf = (b, now) => { const r = bRate(b); return r ? Math.floor(r * Math.min(CFG.city.capHours, ((now - b.last) / 3600000) * tScale())) : 0; };
+const upgradeCost = (b) => (b.lv >= CFG.city.maxLv || BUILDINGS[b.type].kind === 'home' ? 0 : Math.round(BUILDINGS[b.type].cost * CFG.city.upgradeMul * b.lv));
+function cityView(p) {
+  const now = Date.now(), c = p.city; let total = 0, pending = 0;
+  const lots = c.lots.map((l) => {
+    if (!l.b) return { owned: l.owned };
+    const rate = bRate(l.b), acc = accruedOf(l.b, now); total += rate; pending += acc;
+    return { owned: true, b: { type: l.b.type, lv: l.b.lv, mgr: l.b.mgr, rate: Math.round(rate * 10) / 10, wage: Math.round(bWage(l.b) * 10) / 10, accrued: acc, last: l.b.last, upCost: upgradeCost(l.b) } };
+  });
+  return { cols: CFG.city.cols, rows: CFG.city.rows, lots, landPrice: landPrice(c), totalRate: Math.round(total), pending, now, capHours: CFG.city.capHours, timeScale: tScale() };
+}
+const cityRateOf = (p) => p.city.lots.reduce((a, l) => a + (l.b ? bRate(l.b) : 0), 0);
+function settle(p, b) { const a = accruedOf(b, Date.now()); if (a > 0) p.money += a; b.last = Date.now(); return a; } // 先把累積的產值領走，再改變建築狀態
+const MGR_NAMES = ['林掌櫃', '白三娘', '陳師傅', '許老闆', '葉總管', '周管事', '蘇小姐', '趙先生', '吳店長', '鄭經理', '江大姐', '羅主任', '梁老師', '唐總監', '柳夫人', '方掌門'];
+function makePool() {
+  const out = [], used = new Set();
+  while (out.length < CFG.city.poolSize) {
+    const r = Math.random() * 100, skill = r < 30 ? 1 : r < 60 ? 2 : r < 82 ? 3 : r < 94 ? 4 : 5;
+    const name = MGR_NAMES[Math.floor(Math.random() * MGR_NAMES.length)]; if (used.has(name)) continue; used.add(name);
+    out.push({ id: env.randomHex(4), name, skill, spec: SPECS[Math.floor(Math.random() * SPECS.length)] });
+  }
+  return out;
 }
 const matCount = (p) => Object.keys(p.owned).reduce((a, id) => a + (ITEMS[id] && ITEMS[id].kind === 'mat' ? p.owned[id] : 0), 0);
 const capacity = (p) => CFG.warehouse.base + CFG.warehouse.upgradeCap * p.warehouseLv;
 const isNovice = (p) => p.level <= CFG.noviceLevel;
 const publicProfile = (p) => {
   const { passSalt, passHash, token, likedBy, seen, ...rest } = p;
-  return { ...rest, expNeed: expNeed(p.level), capacity: capacity(p), matCount: matCount(p), novice: isNovice(p), styleBonus: styleBonusOf(p), cols: gridOf(p).cols, rows: gridOf(p).rows };
+  return { ...rest, expNeed: expNeed(p.level), capacity: capacity(p), matCount: matCount(p), novice: isNovice(p), styleBonus: styleBonusOf(p), cols: gridOf(p).cols, rows: gridOf(p).rows, city: cityView(p) };
 };
 
 function addExp(p, amount) {
@@ -111,43 +160,45 @@ const pushProfile = (s) => send(s, { t: 'profile', p: publicProfile(s.p) });
 const broadcastOnline = () => { const n = [...sessions].filter((x) => x.p).length; sessions.forEach((s) => send(s, { t: 'online', n })); };
 
 // ───────── 問答對戰 ─────────
-let waiting = null;           // 線上配對佇列：{ sess, timer }
+const waiting = {};           // 線上配對佇列（依題型分開）：key -> { sess, timer }
 const codeRooms = new Map();  // 邀請碼：code -> { sess, timer }
 const BOT_NAMES = ['小電', '阿智機器人', '電腦博士', '腦力王', '百科小子'];
 const botEntry = () => ({ bot: true, name: BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)], gender: Math.random() < 0.5 ? 'm' : 'f', acc: 0.55 + Math.random() * 0.35 });
+const catOf = (mode) => (mode === 'lyrics' ? '猜歌詞' : null);
 
 function leaveQueue(sess, refund = true) {
   let left = false;
-  if (waiting && waiting.sess === sess) { clearTimeout(waiting.timer); waiting = null; left = true; }
+  for (const k of Object.keys(waiting)) if (waiting[k].sess === sess) { clearTimeout(waiting[k].timer); delete waiting[k]; left = true; }
   for (const [code, w] of codeRooms) if (w.sess === sess) { clearTimeout(w.timer); codeRooms.delete(code); left = true; }
   if (left && refund) { sess.p.money += CFG.entryFee; touch(sess.p); pushProfile(sess); }
   return left;
 }
 
-function joinQuiz(sess, mode, code) {
+function joinQuiz(sess, mode, code, kind) {
   if (sess.room || sess.queued()) return send(sess, { t: 'err', msg: '你已在配對或對戰中' });
   if (sess.p.money < CFG.entryFee) return send(sess, { t: 'err', msg: `金錢不足，參加費需要 ${CFG.entryFee} 元` });
+  const cat = kind === 'lyrics' ? '猜歌詞' : null, key = cat || 'mix';
   if (mode === 'code') {
     code = String(code || '').trim().toUpperCase();
     if (!/^[A-Z0-9]{3,8}$/.test(code)) return send(sess, { t: 'err', msg: '邀請碼請用 3~8 個英數字' });
     sess.p.money -= CFG.entryFee; touch(sess.p); pushProfile(sess);
     const w = codeRooms.get(code);
-    if (w) { clearTimeout(w.timer); codeRooms.delete(code); return startRoom([{ sess: w.sess }, { sess }]); }
-    codeRooms.set(code, { sess, timer: setTimeout(() => { codeRooms.delete(code); sess.p.money += CFG.entryFee; touch(sess.p); pushProfile(sess); send(sess, { t: 'queueCancelled', msg: '沒有人加入邀請碼，已退費' }); }, CFG.codeWaitMs) });
+    if (w) { clearTimeout(w.timer); codeRooms.delete(code); return startRoom([{ sess: w.sess }, { sess }], w.cat); }
+    codeRooms.set(code, { sess, cat, timer: setTimeout(() => { codeRooms.delete(code); sess.p.money += CFG.entryFee; touch(sess.p); pushProfile(sess); send(sess, { t: 'queueCancelled', msg: '沒有人加入邀請碼，已退費' }); }, CFG.codeWaitMs) });
     return send(sess, { t: 'queue', ms: CFG.codeWaitMs, code });
   }
   sess.p.money -= CFG.entryFee; touch(sess.p); pushProfile(sess);
-  if (mode === 'bot') return startRoom([{ sess }, botEntry()]);
-  if (waiting) { const other = waiting.sess; clearTimeout(waiting.timer); waiting = null; return startRoom([{ sess: other }, { sess }]); }
-  waiting = { sess, timer: setTimeout(() => { waiting = null; startRoom([{ sess }, botEntry()]); }, CFG.queueWaitMs) };
+  if (mode === 'bot') return startRoom([{ sess }, botEntry()], cat);
+  if (waiting[key]) { const other = waiting[key].sess; clearTimeout(waiting[key].timer); delete waiting[key]; return startRoom([{ sess: other }, { sess }], cat); }
+  waiting[key] = { sess, timer: setTimeout(() => { delete waiting[key]; startRoom([{ sess }, botEntry()], cat); }, CFG.queueWaitMs) };
   send(sess, { t: 'queue', ms: CFG.queueWaitMs });
 }
 
-function startRoom(entries) {
+function startRoom(entries, cat = null) {
   const humans = entries.filter((e) => e.sess).map((e) => e.sess.p);
   const exclude = new Set(); humans.forEach((p) => p.seen.forEach((id) => exclude.add(id)));
-  let qs = buildMatchQuestions(CFG.questions, exclude);
-  if (qs.length < CFG.questions) qs = buildMatchQuestions(CFG.questions);
+  let qs = buildMatchQuestions(CFG.questions, exclude, cat);
+  if (qs.length < CFG.questions) qs = buildMatchQuestions(CFG.questions, new Set(), cat);
   humans.forEach((p) => { p.seen.push(...qs.map((q) => q.id)); if (p.seen.length > CFG.seenKeep) p.seen.splice(0, p.seen.length - CFG.seenKeep); touch(p); });
 
   const room = {
@@ -294,9 +345,9 @@ const visitView = (p, viewer) => ({ pid: p.pid, name: p.name, gender: p.gender, 
 
 function boardData(viewer) {
   const all = [...players.values()];
-  const row = (p) => ({ pid: p.pid, name: p.name, gender: p.gender, level: p.level, wins: p.stats.wins, bestCombo: p.stats.bestCombo, likes: p.likes, houseLv: p.houseLv, self: p === viewer, liked: p.likedBy.includes(viewer.username) });
+  const row = (p) => ({ pid: p.pid, name: p.name, gender: p.gender, level: p.level, wins: p.stats.wins, bestCombo: p.stats.bestCombo, likes: p.likes, houseLv: p.houseLv, cityRate: Math.round(cityRateOf(p)), self: p === viewer, liked: p.likedBy.includes(viewer.username) });
   const top = (f) => all.slice().sort((a, b) => f(b) - f(a)).slice(0, 10).filter((p) => f(p) > 0).map(row);
-  return { wins: top((p) => p.stats.wins), combo: top((p) => p.stats.bestCombo), likes: top((p) => p.likes), level: top((p) => p.level * 1e6 + p.exp), active: all.slice().sort((a, b) => b.lastSeen - a.lastSeen).slice(0, 10).map(row) };
+  return { wins: top((p) => p.stats.wins), combo: top((p) => p.stats.bestCombo), likes: top((p) => p.likes), level: top((p) => p.level * 1e6 + p.exp), city: top((p) => cityRateOf(p)), active: all.slice().sort((a, b) => b.lastSeen - a.lastSeen).slice(0, 10).map(row) };
 }
 
 function handle(sess, m) {
@@ -305,7 +356,7 @@ function handle(sess, m) {
   const ok = () => { touch(p); pushProfile(sess); };
 
   switch (m.t) {
-    case 'quiz': return joinQuiz(sess, m.mode, m.code);
+    case 'quiz': return joinQuiz(sess, m.mode, m.code, m.kind);
     case 'cancelQueue': if (leaveQueue(sess)) send(sess, { t: 'queueCancelled' }); return;
     case 'answer': if (sess.room) { const i = sess.room.pl.findIndex((x) => x.sess === sess); if (i >= 0) answer(sess.room, i, m.choice); } return;
     case 'report': {
@@ -315,7 +366,6 @@ function handle(sess, m) {
       return send(sess, { t: 'toast', msg: '已回報這題，謝謝！' });
     }
     case 'buy': {
-      if (!p.shop) return err('請先建造商店');
       const it = ITEMS[m.id];
       if (!it || it.starter) return err('沒有這個商品');
       if ((p.owned[it.id] || 0) >= it.limit) return err(`「${it.name}」最多只能持有 ${it.limit} 件（已達上限）`);
@@ -325,7 +375,6 @@ function handle(sess, m) {
       return ok();
     }
     case 'sell': {
-      if (!p.shop) return err('請先建造商店');
       const it = ITEMS[m.id];
       if (it && it.starter) return err('初始服裝不能賣出');
       const free = it ? (p.owned[it.id] || 0) - placedCount(p, it.id) - wornCount(p, it.id) - (p.house.wall === it.id ? 1 : 0) - (p.house.carpet === it.id ? 1 : 0) : 0;
@@ -333,11 +382,6 @@ function handle(sess, m) {
       p.owned[it.id]--; if (!p.owned[it.id]) delete p.owned[it.id];
       p.money += Math.floor(it.price * CFG.sellRate);
       return ok();
-    }
-    case 'buildShop': {
-      if (p.shop) return err('已建造');
-      if (p.money < CFG.shopBuild) return err('金錢不足');
-      p.money -= CFG.shopBuild; p.shop = true; return ok();
     }
     case 'upgradeWarehouse': {
       const cost = CFG.warehouse.upgradeBase * (p.warehouseLv + 1);
@@ -369,6 +413,95 @@ function handle(sess, m) {
       if (name === p.name) return err('名字沒有變');
       if (p.money < CFG.renameCost) return err(`改名需要 ${CFG.renameCost.toLocaleString()} 元`);
       p.money -= CFG.renameCost; p.name = name; send(sess, { t: 'toast', msg: `已改名為「${name}」` }); return ok();
+    }
+    // ───── 城市 ─────
+    case 'cityBuyLand': {
+      const l = p.city.lots[m.i];
+      if (!l) return err('沒有這塊地');
+      if (l.owned) return err('這塊地已經是你的了');
+      const price = landPrice(p.city);
+      if (p.money < price) return err(`買地需要 ${price} 元`);
+      p.money -= price; l.owned = true; p.city.bought++; return ok();
+    }
+    case 'cityBuild': {
+      const l = p.city.lots[m.i], B = BUILDINGS[m.type];
+      if (!l || !l.owned) return err('請先買下這塊地');
+      if (l.b) return err('這塊地已經有建築了');
+      if (!B || B.kind === 'home') return err('無法建造這種建築');
+      if (p.money < B.cost) return err(`建造「${B.name}」需要 ${B.cost} 元`);
+      p.money -= B.cost; l.b = { type: B.id, lv: 1, mgr: null, last: Date.now() };
+      return ok();
+    }
+    case 'cityUpgrade': {
+      const l = p.city.lots[m.i];
+      if (!l || !l.b || l.b.type === 'home') return err('這裡沒有可升級的建築');
+      if (l.b.lv >= CFG.city.maxLv) return err('已是最高等級');
+      const cost = upgradeCost(l.b);
+      if (p.money < cost) return err(`升級需要 ${cost} 元`);
+      settle(p, l.b); p.money -= cost; l.b.lv++; return ok();
+    }
+    case 'cityDemolish': {
+      const l = p.city.lots[m.i];
+      if (!l || !l.b || l.b.type === 'home') return err('無法拆除');
+      settle(p, l.b); p.money += Math.round(BUILDINGS[l.b.type].cost * CFG.city.demolishRefund); l.b = null; return ok();
+    }
+    case 'cityView': return pushProfile(sess);
+    case 'cityPool': case 'cityRefreshPool': {
+      const c = p.city, now = Date.now();
+      if (m.t === 'cityRefreshPool') { if (p.money < CFG.city.poolRefreshCost) return err(`重新徵才需要 ${CFG.city.poolRefreshCost} 元`); p.money -= CFG.city.poolRefreshCost; c.pool = makePool(); c.poolAt = now; ok(); }
+      else if (!c.pool.length || now - c.poolAt > CFG.city.poolTtlMs) { c.pool = makePool(); c.poolAt = now; touch(p); }
+      return send(sess, { t: 'cityPool', pool: c.pool, poolAt: c.poolAt, ttl: CFG.city.poolTtlMs, refreshCost: CFG.city.poolRefreshCost, now });
+    }
+    case 'cityHire': {
+      const l = p.city.lots[m.i], B = l && l.b && BUILDINGS[l.b.type];
+      if (!B || B.kind !== 'biz') return err('這裡不需要管理者');
+      if (l.b.mgr) return err('已有管理者，請先解雇');
+      const cand = p.city.pool.find((x) => x.id === m.cid);
+      if (!cand) return err('找不到這位人選，請重新整理人才市場');
+      const fee = Math.round(B.cost * CFG.city.hireRate * cand.skill);
+      if (p.money < fee) return err(`聘用需要 ${fee} 元`);
+      p.money -= fee; l.b.mgr = { name: cand.name, skill: cand.skill, spec: cand.spec }; l.b.last = Date.now();
+      p.city.pool = p.city.pool.filter((x) => x.id !== cand.id);
+      return ok();
+    }
+    case 'cityFire': {
+      const l = p.city.lots[m.i];
+      if (!l || !l.b || !l.b.mgr) return err('沒有管理者');
+      settle(p, l.b); l.b.mgr = null; return ok();
+    }
+    case 'cityCollect': {
+      let got = 0; const now = Date.now();
+      const lots = m.i === undefined || m.i === null ? p.city.lots : [p.city.lots[m.i]];
+      for (const l of lots) if (l && l.b) { const a = accruedOf(l.b, now); if (a > 0) { got += a; p.money += a; } if (bRate(l.b) > 0) l.b.last = now; }
+      if (!got) return err('目前沒有可收取的產值（建築每小時累積，最多累積 ' + CFG.city.capHours + ' 小時）');
+      send(sess, { t: 'toast', msg: `💰 收取產值 ${got} 元` }); return ok();
+    }
+    // ───── 小遊戲 ─────
+    case 'mgStart': {
+      const g = m.game, cfg = g === 'mine' ? MG.MINE_LEVELS[m.level] : g === 'memory' ? MG.MEMORY : g === 'num' ? MG.NUMGAME : null;
+      if (!cfg) return err('未知的遊戲');
+      if (p.money < cfg.fee) return err(`參加費需要 ${cfg.fee} 元`);
+      p.money -= cfg.fee;
+      sess.mg = { game: g, level: m.level, seed: parseInt(env.randomHex(4), 16) % 2147483647, t0: Date.now() };
+      ok(); return send(sess, { t: 'mgReady', game: g, level: m.level, seed: sess.mg.seed, fee: cfg.fee });
+    }
+    case 'mgEnd': {
+      const g = sess.mg; sess.mg = null;
+      if (!g) return err('沒有進行中的遊戲');
+      const elapsed = Date.now() - g.t0;
+      let win = false, cfg;
+      if (g.game === 'mine') { cfg = MG.MINE_LEVELS[g.level]; win = MG.verifyMine(g.seed, g.level, m.log).win; }
+      else if (g.game === 'memory') { cfg = MG.MEMORY; win = MG.verifyMemory(g.seed, m.log).win; }
+      else { cfg = MG.NUMGAME; win = MG.verifyNum(g.seed, m.log).win; }
+      const day = new Date().toISOString().slice(0, 10);
+      if (!p.mgDay || p.mgDay.d !== day) p.mgDay = { d: day, mine: 0, memory: 0, num: 0 };
+      let reward = 0, note = '';
+      if (win) {
+        if (elapsed < cfg.minMs * (tScale() > 1 ? 0 : 1)) note = '完成得太快，沒有獎勵（為了防止作弊）';
+        else if (p.mgDay[g.game] >= MG.DAILY_CAP) note = `今天這個遊戲的獎勵已領滿（每天 ${MG.DAILY_CAP} 次）`;
+        else { reward = cfg.reward; p.mgDay[g.game]++; p.money += reward; }
+      }
+      ok(); return send(sess, { t: 'mgResult', game: g.game, win, reward, note, left: MG.DAILY_CAP - p.mgDay[g.game], fee: cfg.fee });
     }
     case 'board': return send(sess, { t: 'board', ...boardData(p) });
     case 'visit': {
@@ -419,8 +552,8 @@ function auth(sess, m) {
   sess.p = p; p.lastSeen = Date.now(); touch(p);
   send(sess, {
     t: 'welcome', token: p.token, p: publicProfile(p),
-    catalog: { items: ITEMS, cats: CATS, styles: STYLES },
-    cfg: { offline: !!env.offline, entryFee: CFG.entryFee, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, renameCost: CFG.renameCost, noviceLevel: CFG.noviceLevel, likeReward: CFG.likeReward, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
+    catalog: { items: ITEMS, cats: CATS, styles: STYLES, buildings: BUILDINGS, specs: SPECS },
+    cfg: { city: CFG.city, minigames: { mine: MG.MINE_LEVELS, memory: MG.MEMORY, num: MG.NUMGAME, cap: MG.DAILY_CAP }, offline: !!env.offline, entryFee: CFG.entryFee, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, renameCost: CFG.renameCost, noviceLevel: CFG.noviceLevel, likeReward: CFG.likeReward, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
   });
   broadcastOnline();
 }
@@ -428,7 +561,7 @@ function auth(sess, m) {
   // ───────── 對外介面 ─────────
   // transport: { out(obj): 傳訊息給這位玩家, alive(): 連線是否還在 }
   function connect(transport) {
-    const sess = { out: transport.out, alive: transport.alive, p: null, room: null, qseen: null, queued() { return (waiting && waiting.sess === sess) || [...codeRooms.values()].some((w) => w.sess === sess); } };
+    const sess = { out: transport.out, alive: transport.alive, p: null, room: null, qseen: null, queued() { return Object.values(waiting).some((w) => w.sess === sess) || [...codeRooms.values()].some((w) => w.sess === sess); } };
     sessions.add(sess);
     let msgs = 0;
     const rateTimer = setInterval(() => { msgs = 0; }, 1000);
@@ -447,7 +580,7 @@ function auth(sess, m) {
       },
     };
   }
-  return { connect, flush, CFG, bankSize, catalog: { items: ITEMS, cats: CATS, styles: STYLES } };
+  return { connect, flush, CFG, bankSize, catalog: { items: ITEMS, cats: CATS, styles: STYLES, buildings: BUILDINGS, specs: SPECS } };
 }
 
 module.exports = { createGame };

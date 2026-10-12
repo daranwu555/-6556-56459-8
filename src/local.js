@@ -40,6 +40,7 @@ const storage = {
 
 const game = createGame({
   storage, offline: true, startMoney: 1000, startLevel: 1,
+  timeScale: () => { try { return localStorage.getItem('hq_fast') === '1' ? 60 : 1; } catch (e) { return 1; } }, // 測試加速：1 分鐘 = 1 遊戲小時
   hashPw: (pw, salt) => sha256(salt + ':' + pw),
   randomHex: (n) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a, (x) => x.toString(16).padStart(2, '0')).join(''); },
   safeEqual: (a, b) => a === b,
@@ -58,3 +59,5 @@ class LocalSocket {
 }
 window.__LocalSocket = LocalSocket;
 window.__persistOk = () => persistOk;
+window.__setFast = (on) => { try { localStorage.setItem('hq_fast', on ? '1' : '0'); } catch (e) { /* 無法存檔時忽略 */ } };
+window.__isFast = () => { try { return localStorage.getItem('hq_fast') === '1'; } catch (e) { return false; } };
