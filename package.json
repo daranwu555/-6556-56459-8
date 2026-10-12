@@ -1,0 +1,8 @@
+{
+  "name": "house-quiz-tycoon",
+  "version": "0.1.0",
+  "description": "經營型連線問答遊戲：答題賺錢、蓋房子、裝潢",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ws": "^8.18.0" }
+}
