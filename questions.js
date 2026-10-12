@@ -292,7 +292,7 @@ const BANK = [
   ...require('./qbank_vocab').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...require('./qbank_brain').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...require('./qbank_phil').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
-  ...loadDir(path.join(__dirname, 'qdata'), '程式生成'),
+  ...require('./qdata/math.json').map((x) => mkItem(x.c, x.q, x.a, x.w, x.t, '程式生成')),
 ];
 const EXTERNAL = loadDir(path.join(__dirname, 'data', 'questions'), '外部匯入');
 const ALL = [...BANK, ...EXTERNAL];

@@ -6,70 +6,75 @@
 <title>小屋大亨 — 問答賺錢蓋房子</title>
 <script type="importmap">{"imports":{"three":"/vendor/three/three.module.js","three/jsm/":"/vendor/three/jsm/"}}</script>
 <style>
-:root{--bg:#1a1c2c;--card:#292d45;--card2:#3a4066;--txt:#f4f4f4;--mut:#a9b0d0;--acc:#ffcd75;--ok:#38b764;--bad:#ef4d5c;--blue:#41a6f6;--ink:#0b0c16}
+:root{--bg:#14100d;--card:#2a2118;--card2:#3b2e20;--txt:#f2e8d0;--mut:#b6a584;--acc:#d9ae4e;--ok:#4f9a86;--bad:#d9534f;--blue:#6fb3a5;--ink:#0b0806;--red:#a82d2a;--line:#7a6236;color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,"Noto Sans TC","PingFang TC",sans-serif;padding:0 14px 40px;
- background-image:linear-gradient(45deg,#1f2236 25%,transparent 25%,transparent 75%,#1f2236 75%),linear-gradient(45deg,#1f2236 25%,transparent 25%,transparent 75%,#1f2236 75%);background-size:24px 24px;background-position:0 0,12px 12px}
-/* 像素風：硬邊框 + 階梯陰影 */
-button,input,.card,.stat,.pcard,.it,.room,.avatar,.bar{border-radius:4px}
-.card{background:var(--card);padding:16px;margin-top:14px;border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink)}
-button{font:inherit;cursor:pointer;border:3px solid var(--ink);padding:6px 12px;background:var(--card2);color:var(--txt);box-shadow:0 3px 0 var(--ink)}
-button:hover:not(:disabled){filter:brightness(1.2)}
-button:active:not(:disabled){transform:translateY(3px);box-shadow:none}
-button:disabled{opacity:.45;cursor:not-allowed}
-button.pri{background:var(--acc);color:#2b1d00;font-weight:700}
-button.on{background:#566099;border-color:var(--acc)}
-input{font:inherit;padding:8px 12px;border:3px solid var(--ink);background:#12132080;color:var(--txt);width:100%;margin-bottom:8px}
+body{margin:0;color:var(--txt);font:15px/1.6 "Noto Serif TC","Source Han Serif TC","Songti TC","STSong","PMingLiU","MingLiU","Kaiti TC","BiauKai",serif;padding:0 16px 60px;background-color:var(--bg);
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 300' preserveAspectRatio='none'%3E%3Cpath d='M0 300V210c60-40 110-90 170-60s90 60 150 10 120-110 190-70 100 80 160 40 90-60 130-30V300z' fill='%23ffffff' fill-opacity='.035'/%3E%3Cpath d='M0 300V250c80-30 140-70 220-40s130 40 210 0 150-60 220-20 100 30 150 10V300z' fill='%23ffffff' fill-opacity='.04'/%3E%3C/svg%3E"),radial-gradient(ellipse at 15% 0%,#3d2f20 0,transparent 55%),radial-gradient(ellipse at 95% 100%,#1c2b28 0,transparent 55%),linear-gradient(#18130f,#0e0b09);
+ background-repeat:no-repeat;background-position:bottom;background-size:100% 340px,auto,auto,auto;background-attachment:fixed}
+button,input,.card,.stat,.pcard,.it,.room,.bar{border-radius:5px}
+.card{position:relative;background:linear-gradient(#2e251b,#251d15);padding:18px;margin-top:16px;border:1px solid var(--line);box-shadow:inset 0 0 0 3px #1a140e,inset 0 0 0 4px #7a623666,0 6px 18px #0008}
+button{font:inherit;cursor:pointer;border:1px solid var(--acc);padding:6px 14px;background:linear-gradient(#b8332f,#8a1d1b);color:#f7e8c4;letter-spacing:.06em;box-shadow:0 2px 0 #4a0f0e,inset 0 1px 0 #ffffff30;transition:filter .15s,transform .1s}
+button:hover:not(:disabled){filter:brightness(1.15)}
+button:active:not(:disabled){transform:translateY(2px);box-shadow:none}
+button:disabled{opacity:.4;cursor:not-allowed;filter:grayscale(.5)}
+button.pri{background:linear-gradient(#e5bd5c,#b78a2c);color:#2a1a05;font-weight:700;border-color:#f3d98b;box-shadow:0 2px 0 #6b4d12,inset 0 1px 0 #ffffff60}
+button.on{background:linear-gradient(#3f8c78,#2a6355);border-color:#a8e0cf;color:#f2fff9}
+input{font:inherit;padding:8px 12px;border:1px solid var(--line);background:#120d0a;color:var(--txt);width:100%;margin-bottom:8px;box-shadow:inset 0 2px 6px #000a}
+input:focus{outline:1px solid var(--acc)}
 .wrap{max-width:1000px;margin:0 auto}
-h2,h3{margin:0 0 10px}
+h2,h3{margin:0 0 10px;color:#f0cf7e;letter-spacing:.12em;font-weight:700;text-shadow:0 1px 0 #000}
 .mut{color:var(--mut);font-size:13px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .grow{flex:1}
-#login{max-width:420px;margin:8vh auto 0;text-align:center}
+#login{max-width:430px;margin:7vh auto 0;text-align:center;padding-top:26px}
+#login h2{font-size:34px;letter-spacing:.3em;margin-bottom:6px}
+#login::after{content:"俠";position:absolute;right:22px;top:20px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--red);color:#f6e7c1;font-size:22px;border-radius:3px;transform:rotate(6deg);box-shadow:0 0 0 2px #00000050 inset}
 #login .g button{font-size:42px;padding:12px 24px}
-#top{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0 6px}
-.stat{background:var(--card);border:3px solid var(--ink);padding:3px 12px;font-weight:700}
-.bar{height:12px;background:#0b0c16;border:2px solid var(--ink);overflow:hidden}
-.bar>i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--blue) 0 8px,#73eff7 8px 10px);transition:width .4s}
+#top{position:sticky;top:0;z-index:5;background:linear-gradient(#14100dee 70%,#14100d00);padding:12px 0 8px;backdrop-filter:blur(3px)}
+.brand{font-size:20px;font-weight:700;color:#f0cf7e;letter-spacing:.25em;padding-right:6px;text-shadow:0 1px 0 #000}
+.stat{background:linear-gradient(#3a2d20,#2a2118);border:1px solid var(--line);padding:3px 14px;font-weight:700}
+.bar{height:10px;background:#0b0806;border:1px solid var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,#3f8c78,#d9ae4e);transition:width .4s}
 nav{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-nav button{flex:1;min-width:80px;padding:9px 4px}
-.stage3d{position:relative;width:100%;height:min(64vh,540px);min-height:320px;border:4px solid var(--ink);background:linear-gradient(#8fb9e8,#e7d9c4 70%);overflow:hidden;touch-action:none}
-.stage3d.dark{background:radial-gradient(circle at 50% 35%,#4a4f7a,#1a1c2c)}
+nav button{flex:1;min-width:80px;padding:9px 4px;font-size:15px}
+.stage3d{position:relative;width:100%;height:min(64vh,540px);min-height:320px;border:1px solid var(--line);box-shadow:inset 0 0 0 3px #1a140e,0 4px 14px #0009;background:linear-gradient(#b9cfc6,#efe4cd 70%);overflow:hidden;touch-action:none;border-radius:6px}
+.stage3d.dark{background:radial-gradient(circle at 50% 35%,#3f4a46,#14100d 75%)}
 .stage3d canvas{width:100%;height:100%}
 .sty-cool,.sty-cute,.sty-fun{filter:none}
-.tray{display:flex;flex-wrap:wrap;gap:8px}
-.it{background:var(--card2);padding:8px;width:118px;text-align:center;border:3px solid var(--ink)}
-.it.sel{border-color:var(--acc)}
+.tray{display:flex;flex-wrap:wrap;gap:10px}
+.it{background:linear-gradient(#3b2e20,#2c2217);padding:8px;width:122px;text-align:center;border:1px solid var(--line);box-shadow:0 2px 6px #0007}
+.it.sel{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc),0 0 12px #d9ae4e55}
 .it img{width:100%;height:84px;object-fit:contain;display:block;margin-bottom:2px}
-.it img.tx{object-fit:cover;border:2px solid #0008;height:70px;margin-bottom:6px}
-.it .nm{font-size:12px;line-height:1.3;min-height:32px}
+.it img.tx{object-fit:cover;border:1px solid var(--line);height:70px;margin-bottom:6px}
+.it .nm{font-size:12px;line-height:1.35;min-height:32px}
 .it .pr{font-weight:700;color:var(--acc);font-size:13px}
-.it button{margin-top:4px;padding:2px 6px;font-size:12px;width:100%;border-width:2px;box-shadow:0 2px 0 var(--ink)}
-.tag{font-size:10px;padding:0 6px;background:#0006;display:inline-block}
-.tag.cool{background:#46506b}.tag.cute{background:#a64d79}.tag.fun{background:#b0791a}
+.it button{margin-top:4px;padding:2px 6px;font-size:12px;width:100%}
+.tag{font-size:10px;padding:0 6px;background:#0007;display:inline-block;border-radius:2px;border:1px solid #ffffff22}
+.tag.cool{background:#33505b}.tag.cute{background:#8f3d52}.tag.fun{background:#8a6a1a}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-.chips button{padding:2px 10px;font-size:13px;border-width:2px}
+.chips button{padding:2px 12px;font-size:13px}
 /* 問答 */
 .opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
 @media(max-width:560px){.opts{grid-template-columns:1fr}}
-.opt{padding:14px;font-size:16px;text-align:left}
-.opt.picked{border-color:var(--blue)}
-.opt.right{background:#257a4a}
-.opt.wrong{background:#8a2f3a}
-#qtext{font-size:20px;font-weight:700;margin:6px 0}
+.opt{padding:14px;font-size:16px;text-align:left;background:linear-gradient(#43362a,#31261b);color:var(--txt);border-color:var(--line);box-shadow:0 2px 0 #1a120b}
+.opt.picked{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+.opt.right{background:linear-gradient(#3f8c78,#2a6355);border-color:#a8e0cf}
+.opt.wrong{background:linear-gradient(#9d3430,#6e1f1c);border-color:#e08a86}
+#qtext{font-size:21px;font-weight:700;margin:6px 0;letter-spacing:.05em}
 .vs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.pcard{background:var(--card2);padding:10px;text-align:center;border:3px solid var(--ink)}
-.pcard b{font-size:22px}
+.pcard{background:linear-gradient(#3b2e20,#2c2217);padding:10px;text-align:center;border:1px solid var(--line)}
+.pcard b{font-size:22px;color:#f0cf7e}
 .combo{color:var(--acc);font-weight:700}
-.badge{display:inline-block;background:var(--ok);color:#06210f;font-weight:700;padding:0 8px;font-size:12px;border:2px solid var(--ink)}
-.badge.vet{background:#566099;color:#fff}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000d;padding:10px 18px;z-index:50;max-width:90%;border:3px solid var(--acc)}
+.badge{display:inline-block;background:var(--ok);color:#f2fff9;font-weight:700;padding:0 10px;font-size:12px;border-radius:3px;border:1px solid #a8e0cf}
+.badge.vet{background:var(--red);border-color:#e0a08a;color:#f6e7c1}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0c0907ee;padding:10px 20px;z-index:50;max-width:90%;border:1px solid var(--acc);border-radius:5px;box-shadow:0 4px 16px #000a}
 .hidden{display:none!important}
-.big{font-size:26px;font-weight:800}
+.big{font-size:28px;font-weight:800;color:#f0cf7e;letter-spacing:.1em}
 table{border-collapse:collapse;width:100%}
-td,th{padding:6px 8px;border-bottom:2px solid #0004;text-align:left}
-tr.link{cursor:pointer}tr.link:hover{background:#0003}
-.need{color:var(--bad)}.have{color:var(--ok)}
+td,th{padding:6px 8px;border-bottom:1px solid #7a623644;text-align:left}
+th{color:#f0cf7e}
+tr.link{cursor:pointer}tr.link:hover{background:#ffffff10}
+.need{color:var(--bad)}.have{color:#7fd1b6}
 </style>
 </head>
 <body>
@@ -78,7 +83,7 @@ tr.link{cursor:pointer}tr.link:hover{background:#0003}
 <!-- 登入 / 註冊 -->
 <div id="login" class="card">
   <h2 style="font-size:28px">🏠 小屋大亨</h2>
-  <p class="mut">答題賺錢、蓋房子、買家具、打扮自己！</p>
+  <p class="mut">行俠仗義、答題賺錢、築屋置家、裝扮自己。</p>
   <div class="chips" style="justify-content:center"><button id="tLogin" class="on">登入</button><button id="tReg">註冊新帳號</button></div>
   <input id="uname" maxlength="16" placeholder="帳號（英數字，3~16 碼）" autocomplete="username">
   <input id="pw" type="password" placeholder="密碼（至少 6 碼）" autocomplete="current-password">
@@ -99,6 +104,7 @@ tr.link{cursor:pointer}tr.link:hover{background:#0003}
 <div id="game" class="hidden">
   <div id="top">
     <div class="row">
+      <div class="brand">🏮 小屋大亨</div>
       <div class="stat" id="sName"></div>
       <div class="stat">💰 <span id="sMoney"></span></div>
       <div class="stat">⭐ Lv.<span id="sLv"></span> <span class="badge" id="sNovice"></span></div>
@@ -177,7 +183,7 @@ tr.link{cursor:pointer}tr.link:hover{background:#0003}
         <button class="pri" id="qOnline">🌐 線上配對（10 秒無真人則電腦頂替）</button>
         <button id="qBot">🤖 對戰電腦</button>
       </div>
-      <div class="row" style="margin-top:10px"><input id="qCode" maxlength="8" placeholder="邀請碼（3~8 英數字）" style="width:200px;margin:0"><button id="qCodeGo">👥 好友對戰</button><span class="mut">與朋友輸入相同邀請碼即可對戰</span></div>
+      <div class="row" id="qCodeRow" style="margin-top:10px"><input id="qCode" maxlength="8" placeholder="邀請碼（3~8 英數字）" style="width:200px;margin:0"><button id="qCodeGo">👥 好友對戰</button><span class="mut">與朋友輸入相同邀請碼即可對戰</span></div>
       <p class="mut" id="qStat"></p>
     </div>
     <div class="card hidden" id="quizWait"><h3>🔍 配對中…</h3><p class="mut" id="waitTxt">等待其他玩家加入</p><button id="qCancel">取消（退還參加費）</button></div>
@@ -209,340 +215,6 @@ tr.link{cursor:pointer}tr.link:hover{background:#0003}
 </div>
 <div class="toast hidden" id="toast"></div>
 
-<script type="module">
-import { HouseView, DressView, hydrateThumbs } from '/js/gfx.js';
-const $ = (s) => document.querySelector(s);
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-let ws, P = null, CAT = null, CFG = null, gender = 'm', view = 'house', mode = 'login';
-let sel = null, houseCat = 'all', shopStyle = 'all', shopCat = 'all', boardTab = 'wins', board = null, visiting = null;
-let reconnectTimer;
-
-// ───── 連線 ─────
-function connect() {
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-  ws.onopen = () => {
-    $('#conn').textContent = '已連線 ✔';
-    const tk = localStorage.getItem('hq_token');
-    if (tk) ws.send(JSON.stringify({ t: 'hello', token: tk }));
-  };
-  ws.onclose = () => { $('#conn').textContent = '連線中斷，重試中…'; clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connect, 2000); };
-  ws.onmessage = (e) => onMsg(JSON.parse(e.data));
-}
-const send = (o) => ws && ws.readyState === 1 && ws.send(JSON.stringify(o));
-function toast(msg) {
-  const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden');
-  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 2600);
-}
-
-function onMsg(m) {
-  switch (m.t) {
-    case 'needLogin': localStorage.removeItem('hq_token'); break;
-    case 'authErr': $('#authMsg').textContent = m.msg; break;
-    case 'welcome':
-      localStorage.setItem('hq_token', m.token);
-      CAT = m.catalog; CFG = m.cfg; P = m.p;
-      $('#login').classList.add('hidden'); $('#game').classList.remove('hidden');
-      renderAll(); break;
-    case 'profile': P = m.p; renderAll(); break;
-    case 'online': $('#sOnline').textContent = m.n; break;
-    case 'err': toast('⚠️ ' + m.msg); break;
-    case 'toast': toast(m.msg); break;
-    case 'kicked': localStorage.removeItem('hq_token'); toast('此帳號已在其他地方登入'); setTimeout(() => location.reload(), 1200); break;
-    case 'queue': showQuiz('wait'); $('#waitTxt').textContent = m.code ? `邀請碼：${m.code}　請把這組碼告訴朋友（${Math.round(m.ms / 1000)} 秒內有效）` : '等待其他玩家加入…'; break;
-    case 'queueCancelled': showQuiz('lobby'); if (m.msg) toast(m.msg); break;
-    case 'matchFound': matchStart(m); break;
-    case 'q': showQuestion(m); break;
-    case 'oppAns': $('#opState').textContent = '對手已作答 ✔'; break;
-    case 'reveal': showReveal(m); break;
-    case 'end': showEnd(m); break;
-    case 'board': board = m; renderBoard(); break;
-    case 'likeOk': toast(m.reward ? `👍 已按讚，你獲得 ${m.reward} 元！（今日還可領 ${m.left} 次）` : '👍 已按讚（今日按讚獎勵已領滿）'); send({ t: 'board' }); break;
-    case 'visit': visiting = m.v; renderVisit(); break;
-  }
-}
-
-// ───── 登入 / 註冊 ─────
-function setMode(m) {
-  mode = m; $('#tLogin').classList.toggle('on', m === 'login'); $('#tReg').classList.toggle('on', m === 'register');
-  $('#regBox').classList.toggle('hidden', m === 'login'); $('#go').textContent = m === 'login' ? '登入' : '建立帳號並開始（初始 1000 元）';
-  $('#authMsg').textContent = '';
-}
-$('#tLogin').onclick = () => setMode('login'); $('#tReg').onclick = () => setMode('register');
-$('#gm').onclick = () => { gender = 'm'; $('#gm').classList.add('on'); $('#gf').classList.remove('on'); };
-$('#gf').onclick = () => { gender = 'f'; $('#gf').classList.add('on'); $('#gm').classList.remove('on'); };
-$('#go').onclick = () => send({ t: mode, username: $('#uname').value, password: $('#pw').value, name: $('#nm').value, gender });
-$('#pw').onkeydown = (e) => { if (e.key === 'Enter') $('#go').click(); };
-
-document.querySelectorAll('nav button').forEach((b) => b.onclick = () => { view = b.dataset.v; if (view === 'social') send({ t: 'board' }); renderAll(); });
-
-function renderAll() {
-  if (!P) return;
-  $('#sName').textContent = (P.gender === 'm' ? '👨 ' : '👩 ') + P.name;
-  $('#sMoney').textContent = P.money.toLocaleString();
-  $('#sLv').textContent = P.level;
-  $('#sNovice').textContent = P.novice ? '新手' : '老手';
-  $('#sNovice').classList.toggle('vet', !P.novice);
-  $('#expBar').style.width = Math.min(100, (P.exp / P.expNeed) * 100) + '%';
-  $('#expTxt').textContent = `經驗 ${P.exp} / ${P.expNeed}（升到 Lv.${P.level + 1}）`;
-  document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.v === view));
-  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('hidden', v.id !== 'v-' + view));
-  if (view === 'house') renderHouse();
-  if (view === 'dress') renderDress();
-  if (view === 'ware') renderWare();
-  if (view === 'shop') renderShop();
-  if (view === 'quiz') renderLobby();
-  if (view === 'social') { renderBoard(); renderVisit(); }
-}
-
-// ───── 共用：物品 / 縮圖 ─────
-const I = (id) => CAT.items[id];
-const thumbImg = (it) => `<img data-thumb="${it.id}" class="${it.tex ? 'tx' : ''}" alt="${esc(it.name)}" ${it.tex ? `src="/${it.tex}"` : ''}>`;
-const tag = (it) => (it.style === 'none' ? '' : `<span class="tag ${it.style}">${CAT.styles[it.style]}</span>`);
-const hydrate = (el) => hydrateThumbs(el, CAT.items);
-const wornN = (id) => Object.values(P.worn).filter((x) => x === id).length;
-const inUse = (id) => work.placed.filter((x) => x.id === id).length + wornN(id) + (work.wall === id ? 1 : 0) + (work.carpet === id ? 1 : 0);
-const placedN = (id) => work.placed.filter((x) => x.id === id).length;
-
-function chips(el, entries, cur, cb) {
-  el.innerHTML = '';
-  entries.forEach(([k, label]) => {
-    const b = document.createElement('button'); b.textContent = label; if (k === cur) b.classList.add('on');
-    b.onclick = () => cb(k); el.appendChild(b);
-  });
-}
-function styleLine(d) {
-  const ids = [d.house.wall, d.house.carpet, ...d.house.placed.map((x) => x.id), ...Object.values(d.worn || {})].filter(Boolean);
-  if (!ids.length) return '';
-  const c = {}; ids.forEach((id) => { const s = I(id).style; c[s] = (c[s] || 0) + 1; });
-  const [top, n] = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
-  const pct = Math.round((n / ids.length) * 100), sb = CFG.styleBonus;
-  return `房屋風格：${CAT.styles[top]} ${pct}%` + (pct >= sb.ratio * 100 && ids.length >= sb.minItems ? ` ✨ 風格加成：答題金錢 +${sb.rate * 100}%` : `（風格 ≥${sb.ratio * 100}% 且至少 ${sb.minItems} 件，答題金錢 +${sb.rate * 100}%）`);
-}
-
-// ───── 房屋（3D）─────
-let houseStage = null, work = { wall: null, carpet: null, placed: [] }, hold = null;
-const cloneHouse = (h) => JSON.parse(JSON.stringify(h));
-function ensureHouseStage() {
-  if (houseStage) return;
-  houseStage = new HouseView($('#room3d'), { interactive: true, onPlace, onPick, onInvalid: () => toast('這裡放不下，換個位置吧') });
-  houseStage.setItems(CAT.items);
-  window.addEventListener('keydown', (e) => { if (view !== 'house' || !hold) return; if (e.key === 'r' || e.key === 'R') rotateHold(); if (e.key === 'Escape') cancelHold(); });
-}
-const sendHouse = () => send({ t: 'house', house: work });
-function setHold(h) { hold = h; houseStage.setHold(h && h.id, h && h.rot); renderHouse(); }
-function rotateHold() { if (hold) { hold.rot = (hold.rot + 1) % 4; houseStage.setHold(hold.id, hold.rot); } }
-function cancelHold() { if (!hold) return; if (hold.orig) work = cloneHouse(P.house); setHold(null); }
-function onPlace(pl) {
-  work.placed.push({ id: pl.id, x: pl.x, z: pl.z, rot: pl.rot });
-  const left = P.owned[pl.id] - placedN(pl.id);
-  sendHouse();
-  if (hold.orig || left <= 0) { hold = null; houseStage.setHold(null); } else hold.orig = null;
-  renderHouse();
-}
-function onPick(i) { const it = work.placed.splice(i, 1)[0]; setHold({ id: it.id, rot: it.rot, orig: it }); }
-$('#hRot').onclick = rotateHold; $('#hCancel').onclick = cancelHold;
-$('#hRemove').onclick = () => { if (hold && hold.orig) { sendHouse(); setHold(null); } else toast('先點擊房間裡的家具，再按收回'); };
-
-function renderHouse() {
-  ensureHouseStage();
-  if (!hold) work = cloneHouse(P.house);
-  houseStage.setData({ cols: P.cols, rows: P.rows, house: work, worn: P.worn, gender: P.gender });
-  $('#houseHint').textContent = (hold ? `拿著：${I(hold.id).name}（旋轉 ${hold.rot * 90}°）` : '房屋 Lv.' + P.houseLv + `（${P.cols}×${P.rows} 公尺）`) + '　' + styleLine({ house: work, worn: P.worn });
-
-  const next = CFG.houseLevels[P.houseLv];
-  if (!next) $('#expandBox').innerHTML = `<h3>🏗️ 房屋擴建</h3><p>房屋已是最高等級 Lv.${P.houseLv}（${P.cols}×${P.rows} 公尺）！</p>`;
-  else {
-    const mats = Object.entries(next.mats).map(([id, n]) => { const have = P.owned[id] || 0; return `<span class="${have >= n ? 'have' : 'need'}">${I(id).emoji}${I(id).name} ${have}/${n}</span>`; }).join('　');
-    const can = P.money >= next.money && Object.entries(next.mats).every(([id, n]) => (P.owned[id] || 0) >= n);
-    $('#expandBox').innerHTML = `<h3>🏗️ 房屋擴建 Lv.${P.houseLv} → Lv.${P.houseLv + 1}（${P.cols}×${P.rows} → ${next.cols}×${next.rows} 公尺）</h3>
-      <p>💰 <span class="${P.money >= next.money ? 'have' : 'need'}">${P.money}/${next.money}</span>　${mats}</p>
-      <p class="mut">建材到商店購買（需先蓋商店），存放在倉庫。</p><button class="pri" id="expBtn" ${can ? '' : 'disabled'}>擴建房屋</button>`;
-    $('#expBtn').onclick = () => send({ t: 'expand' });
-  }
-
-  const owned = Object.keys(P.owned).filter((id) => ['furn', 'wall', 'floor'].includes(I(id).kind));
-  const cats = ['all', ...Object.keys(CAT.cats).filter((k) => owned.some((id) => I(id).cat === k))];
-  chips($('#houseChips'), cats.map((k) => [k, k === 'all' ? '全部' : CAT.cats[k].label]), houseCat, (k) => { houseCat = k; renderHouse(); });
-  const tray = $('#houseTray'); tray.innerHTML = '';
-  const ids = owned.filter((id) => houseCat === 'all' || I(id).cat === houseCat);
-  if (!ids.length) tray.innerHTML = '<span class="mut">還沒有家具，去商店逛逛吧！（需先建造商店）</span>';
-  ids.forEach((id) => {
-    const it = I(id), kind = it.kind, d = document.createElement('div'); d.className = 'it' + (hold && hold.id === id ? ' sel' : '');
-    let btn, fn;
-    if (kind === 'wall') { btn = work.wall === id ? '取消' : '貼上'; fn = () => { work.wall = work.wall === id ? null : id; sendHouse(); }; }
-    else if (kind === 'floor') { btn = work.carpet === id ? '取消' : '鋪上'; fn = () => { work.carpet = work.carpet === id ? null : id; sendHouse(); }; }
-    else { btn = hold && hold.id === id ? '放下' : '拿起擺放'; fn = () => (hold && hold.id === id ? (cancelHold(), setHold(null)) : P.owned[id] - placedN(id) > 0 ? setHold({ id, rot: 0, orig: null }) : toast('這件家具都已擺放了')); }
-    const left = kind === 'furn' ? ` 剩${P.owned[id] - placedN(id)}` : '';
-    d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}${left}<br>${tag(it)}</div><button>${btn}</button>`;
-    d.querySelector('button').onclick = fn;
-    tray.appendChild(d);
-  });
-  hydrate(tray);
-}
-
-
-// ───── 更衣室（3D）─────
-let dressStage = null, dressSlot = 'suit', dressStyle = 'all', tryOn = {};
-const SLOTS = ['head', 'suit', 'top', 'bottom', 'shoes'];
-function renderDress() {
-  if (!dressStage) {
-    dressStage = new DressView($('#dress3d'));
-    chips($('#dressCam'), [['full', '全身'], ['upper', '上半身'], ['head', '頭部'], ['feet', '鞋子'], ['spin', '⏯ 旋轉']], '', (k) => { if (k === 'spin') dressStage.controls.autoRotate = !dressStage.controls.autoRotate; else dressStage.focus(k); });
-  }
-  const look = { ...P.worn, ...tryOn };
-  dressStage.setLook(P.gender, look, CAT.items);
-  chips($('#dressSlots'), SLOTS.map((k) => [k, CAT.cats[k].label]), dressSlot, (k) => { dressSlot = k; renderDress(); });
-  chips($('#dressStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles)], dressStyle, (k) => { dressStyle = k; renderDress(); });
-  const tray = $('#dressTray'); tray.innerHTML = '';
-  Object.values(CAT.items).filter((it) => it.cat === dressSlot && (!it.starter || it.gender === P.gender) && (dressStyle === 'all' || it.style === dressStyle || it.starter)).forEach((it) => {
-    const own = P.owned[it.id] || 0, worn = P.worn[it.cat] === it.id, trying = tryOn[it.cat] === it.id;
-    const d = document.createElement('div'); d.className = 'it' + (trying || (worn && !tryOn[it.cat]) ? ' sel' : '');
-    d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}<br>${tag(it)}</div>` +
-      (own ? `<div class="mut">已擁有${worn ? '・穿著中' : ''}</div><button data-a="wear">${worn ? '脫下' : '穿上'}</button>` : `<div class="pr">💰 ${it.price}</div><button data-a="try">${trying ? '試穿中' : '試穿'}</button><button data-a="buy" ${P.shop && P.money >= it.price ? '' : 'disabled'}>購買</button>`);
-    d.querySelectorAll('button').forEach((b) => b.onclick = () => {
-      if (b.dataset.a === 'wear') { delete tryOn[it.cat]; send({ t: 'equip', slot: it.cat, id: worn ? null : it.id }); }
-      else if (b.dataset.a === 'try') { tryOn[it.cat] = trying ? undefined : it.id; if (!tryOn[it.cat]) delete tryOn[it.cat]; renderDress(); }
-      else send({ t: 'buy', id: it.id });
-    });
-    tray.appendChild(d);
-  });
-  hydrate(tray);
-  $('#newName').value = $('#newName').value || P.name; $('#renameBtn').textContent = `改名（${CFG.renameCost.toLocaleString()} 元）`; $('#renameBtn').disabled = P.money < CFG.renameCost; $('#renameHint').textContent = `註冊時取名免費，之後改名需要 ${CFG.renameCost.toLocaleString()} 元。`;
-  $('#renameBtn').onclick = () => send({ t: 'rename', name: $('#newName').value });
-  $('#dressNote').textContent = (Object.keys(tryOn).length ? '👀 目前是試穿畫面（未購買的衣服不會被保存）。' : '') + (P.shop ? '' : ' 蓋好商店後才能購買服飾。') + ' 穿套裝時，會覆蓋上衣和下裝。';
-}
-
-// ───── 倉庫 ─────
-function renderWare() {
-  const W = CFG.warehouse, up = W.upgradeBase * (P.warehouseLv + 1);
-  $('#wareInfo').innerHTML = `<h3>📦 倉庫</h3><div class="bar"><i style="width:${(P.matCount / P.capacity) * 100}%"></i></div>
-    <p>建材空間 <b>${P.matCount} / ${P.capacity}</b>　倉庫等級 ${P.warehouseLv}</p>
-    <button class="pri" id="wUp">升級倉庫 +${W.upgradeCap} 格（${up} 元）</button>`;
-  $('#wUp').onclick = () => send({ t: 'upgradeWarehouse' });
-  const fill = (el, ids, empty) => {
-    el.innerHTML = '';
-    if (!ids.length) el.innerHTML = `<span class="mut">${empty}</span>`;
-    ids.forEach((id) => {
-      const it = I(id), d = document.createElement('div'); d.className = 'it';
-      d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)} ×${P.owned[id]}<br>${tag(it)}${inUse(id) ? `<br><span class="mut">使用中 ${inUse(id)}</span>` : ''}</div>` + (P.shop && !it.starter ? `<button>賣 ${Math.floor(it.price * CFG.sellRate)}</button>` : '');
-      if (P.shop && !it.starter) d.querySelector('button').onclick = () => send({ t: 'sell', id });
-      el.appendChild(d);
-    });
-    hydrate(el);
-  };
-  fill($('#matTray'), Object.keys(P.owned).filter((id) => I(id).kind === 'mat'), '沒有建材，去商店買吧');
-  fill($('#wareTray'), Object.keys(P.owned).filter((id) => I(id).kind !== 'mat'), '沒有家具或服飾');
-}
-
-// ───── 商店 ─────
-function renderShop() {
-  if (!P.shop) {
-    $('#shopInfo').innerHTML = `<h3>🏪 商店</h3><p>尚未建造商店。建造後即可購買建材、服飾與家具，並可賣出物品（賣出價 ${Math.round(CFG.sellRate * 100)}%）。</p><button class="pri" id="sBuild">建造商店（${CFG.shopBuild} 元）</button>`;
-    $('#sBuild').onclick = () => send({ t: 'buildShop' });
-    $('#shopBox').classList.add('hidden'); return;
-  }
-  $('#shopInfo').innerHTML = `<h3>🏪 商店</h3><p class="mut">每件商品都有「持有上限」，賣出或用掉（擴建消耗建材）後可再購買。服飾可到「更衣室」試穿。</p>`;
-  $('#shopBox').classList.remove('hidden');
-  chips($('#shopStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles)], shopStyle, (k) => { shopStyle = k; renderShop(); });
-  chips($('#shopCat'), [['all', '全部類別'], ...Object.entries(CAT.cats).map(([k, v]) => [k, v.label])], shopCat, (k) => { shopCat = k; renderShop(); });
-  const tray = $('#shopTray'); tray.innerHTML = '';
-  Object.values(CAT.items).filter((it) => !it.starter && (shopStyle === 'all' || it.style === shopStyle) && (shopCat === 'all' || it.cat === shopCat)).forEach((it) => {
-    const own = P.owned[it.id] || 0, full = own >= it.limit;
-    const d = document.createElement('div'); d.className = 'it';
-    d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}<br>${tag(it)} <span class="mut">${CAT.cats[it.cat].label}</span></div><div class="pr">💰 ${it.price}</div><div class="mut">持有 ${own}/${it.limit}</div><button ${full || P.money < it.price ? 'disabled' : ''}>${full ? '已達上限' : '購買'}</button>`;
-    d.querySelector('button').onclick = () => send({ t: 'buy', id: it.id });
-    tray.appendChild(d);
-  });
-  hydrate(tray);
-}
-
-// ───── 問答 ─────
-let qTimer, qEnd = 0, answered = false, curQ = null;
-function renderLobby() {
-  $('#myMul').textContent = P.novice ? `新手（Lv ≤ ${CFG.noviceLevel}）：連答 combo 平常 +20%，遇到老手時 +60%（×${CFG.noviceMul}）` : `老手：連答 combo +20%（×${CFG.comboMul}）`;
-  $('#myMul').classList.toggle('vet', !P.novice);
-  $('#mulHint').textContent = `等級 ≤ ${CFG.noviceLevel} 為新手，新手可以和任何人對戰；只有「新手遇到老手」時，新手的連答倍率才會提高。對戰電腦或雙方都是新手，一律 ×1.2。` + (P.styleBonus ? ` 你的房屋風格加成 +${P.styleBonus * 100}% ✨` : '');
-  $('#qStat').textContent = `戰績：${P.stats.played} 場 / ${P.stats.wins} 勝　最高連擊 ${P.stats.bestCombo}`;
-}
-function showQuiz(which) { ['Lobby', 'Wait', 'Play', 'End'].forEach((n) => $('#quiz' + n).classList.toggle('hidden', n.toLowerCase() !== which)); }
-$('#qOnline').onclick = () => send({ t: 'quiz', mode: 'online' });
-$('#qBot').onclick = () => send({ t: 'quiz', mode: 'bot' });
-$('#qCodeGo').onclick = () => send({ t: 'quiz', mode: 'code', code: $('#qCode').value });
-$('#qCancel').onclick = () => send({ t: 'cancelQueue' });
-$('#qReport').onclick = () => { if (curQ) { send({ t: 'report', qid: curQ, reason: '玩家回報' }); $('#qReport').classList.add('hidden'); } };
-
-function matchStart(m) {
-  view = 'quiz'; renderAll(); showQuiz('play');
-  $('#meName').innerHTML = (P.gender === 'm' ? '👨 ' : '👩 ') + esc(P.name) + `（你）<br><span class="badge ${m.mul < 1.5 ? 'vet' : ''}">combo ×${m.mul}</span>`;
-  $('#opName').textContent = (m.opp.gender === 'm' ? '👨 ' : '👩 ') + m.opp.name + (m.opp.bot ? ' 🤖' : ` Lv.${m.opp.level}`);
-  ['#meScore', '#opScore'].forEach((s) => $(s).textContent = '0');
-  ['#meCombo', '#opCombo', '#meMoney', '#opState', '#qEvents', '#qDiff'].forEach((s) => $(s).textContent = '');
-  $('#qtext').textContent = '配對成功！準備開始…'; $('#opts').innerHTML = ''; $('#qNo').textContent = ''; $('#qCat').textContent = '';
-  $('#timeBar').style.width = '100%'; $('#qReport').classList.add('hidden');
-}
-function showQuestion(m) {
-  answered = false; curQ = m.id;
-  $('#qNo').textContent = `第 ${m.i + 1} / ${m.total} 題`; $('#qCat').textContent = m.cat;
-  $('#qDiff').textContent = ''; $('#qReport').classList.add('hidden');
-  $('#qtext').textContent = m.q; $('#qEvents').textContent = ''; $('#opState').textContent = '';
-  const box = $('#opts'); box.innerHTML = '';
-  m.opts.forEach((o, i) => {
-    const b = document.createElement('button'); b.className = 'opt'; b.textContent = ['A', 'B', 'C', 'D'][i] + '. ' + o;
-    b.onclick = () => { if (answered) return; answered = true; b.classList.add('picked'); box.querySelectorAll('button').forEach((x) => x.disabled = true); send({ t: 'answer', choice: i }); };
-    box.appendChild(b);
-  });
-  qEnd = Date.now() + m.ms; clearInterval(qTimer);
-  qTimer = setInterval(() => { const r = Math.max(0, qEnd - Date.now()); $('#timeBar').style.width = (r / m.ms * 100) + '%'; if (!r) clearInterval(qTimer); }, 100);
-}
-function showReveal(m) {
-  clearInterval(qTimer);
-  $('#opts').querySelectorAll('button').forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); else if (i === m.you.choice) b.classList.add('wrong'); });
-  $('#meScore').textContent = m.you.correct; $('#opScore').textContent = m.opp.correct;
-  $('#meCombo').textContent = m.you.streak > 1 ? `🔥 ${m.you.streak} 連擊` : '';
-  $('#opCombo').textContent = m.opp.streak > 1 ? `🔥 ${m.opp.streak} 連擊` : '';
-  $('#meMoney').textContent = `目前可得 💰${m.you.money}　✨${m.you.exp} 經驗`;
-  $('#opState').textContent = m.opp.choice === null ? '對手未作答' : m.opp.ok ? '對手答對 ✔' : '對手答錯 ✘';
-  $('#qEvents').textContent = (m.you.choice === null ? '⏰ 時間到！　' : m.you.ok ? '✅ 答對！　' : '❌ 答錯　') + m.events.join('；');
-  if (m.diff) $('#qDiff').textContent = `· 全站答對率 ${m.diff.rate}%（${m.diff.n} 人次）`;
-  $('#qReport').classList.remove('hidden');
-}
-function showEnd(m) {
-  clearInterval(qTimer); showQuiz('end');
-  const t = { win: '🏆 你贏了！', lose: '😢 這次輸了', draw: '🤝 平手' }[m.result];
-  $('#quizEnd').innerHTML = `<div class="big">${t}</div>
-    <p>你答對 <b>${m.you.correct}</b> 題，對手 ${esc(m.opp.name)} 答對 <b>${m.opp.correct}</b> 題</p>
-    <p>最高連擊 ${m.you.bestStreak}（combo ×${m.you.mul}）　獲得 💰 <b>${m.you.money}</b>${m.you.styleBonus ? `（含風格加成 +${m.you.styleBonus * 100}%）` : ''}　✨ <b>${m.you.exp}</b> 經驗　${m.you.levelUps ? '🎉 升級 ' + m.you.levelUps + ' 級！' : ''}</p>
-    <p class="mut">扣除參加費 50 元，淨收益 <b style="color:${m.net >= 0 ? 'var(--ok)' : 'var(--bad)'}">${m.net >= 0 ? '+' : ''}${m.net}</b> 元</p>
-    <button class="pri" id="again">再來一場</button> <button id="toHouse">回到房屋</button>`;
-  $('#again').onclick = () => showQuiz('lobby');
-  $('#toHouse').onclick = () => { view = 'house'; showQuiz('lobby'); renderAll(); };
-}
-
-// ───── 排行 / 社交 ─────
-const BOARDS = { wins: ['勝場', (r) => r.wins + ' 勝'], combo: ['最高連擊', (r) => r.bestCombo + ' 連'], likes: ['房屋人氣', (r) => '❤️ ' + r.likes], level: ['等級', (r) => 'Lv.' + r.level], active: ['最近活躍', (r) => 'Lv.' + r.level] };
-function renderBoard() {
-  chips($('#boardTabs'), Object.entries(BOARDS).map(([k, v]) => [k, v[0]]), boardTab, (k) => { boardTab = k; renderBoard(); });
-  const rows = board ? board[boardTab] : [];
-  $('#boardTbl').innerHTML = '<tr><th>#</th><th>玩家</th><th>房屋</th><th>' + BOARDS[boardTab][0] + `</th><th>按讚（你 +${CFG.likeReward} 元）</th></tr>` +
-    (rows.length ? rows.map((r, i) => `<tr class="link" data-pid="${r.pid}"><td>${i + 1}</td><td>${r.gender === 'm' ? '👨' : '👩'} ${esc(r.name)}${r.self ? '（你）' : ''}</td><td>Lv.${r.houseLv}</td><td>${BOARDS[boardTab][1](r)}</td><td>${r.self ? '' : `<button data-like="${r.pid}" ${r.liked ? 'disabled' : ''}>${r.liked ? '❤️ 已讚' : '👍 讚'}</button>`}　❤️ ${r.likes}</td></tr>`).join('') : '<tr><td colspan="5" class="mut">還沒有資料</td></tr>');
-  $('#boardTbl').querySelectorAll('tr.link').forEach((tr) => tr.onclick = () => send({ t: 'visit', pid: tr.dataset.pid }));
-  $('#boardTbl').querySelectorAll('button[data-like]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); send({ t: 'like', pid: b.dataset.like }); });
-}
-let visitStage = null;
-function renderVisit() {
-  const box = $('#visitBox');
-  if (!visiting) return box.classList.add('hidden');
-  const v = visiting; box.classList.remove('hidden');
-  if (!visitStage) { visitStage = new HouseView($('#visit3d'), { interactive: false }); visitStage.setItems(CAT.items); }
-  $('#vTitle').textContent = `${v.gender === 'm' ? '👨' : '👩'} ${v.name} 的房子（Lv.${v.houseLv}・${v.cols}×${v.rows} 公尺）`;
-  visitStage.setData({ cols: v.cols, rows: v.rows, house: v.house, worn: v.worn, gender: v.gender });
-  $('#vStyle').textContent = styleLine(v);
-  const like = $('#vLike'); like.textContent = (v.liked ? '❤️ 已按讚 ' : `🤍 按讚（你 +${CFG.likeReward} 元）　`) + v.likes; like.disabled = v.liked || v.pid === P.pid;
-  like.onclick = () => send({ t: 'like', pid: v.pid, visit: 1 });
-  $('#vClose').onclick = () => { visiting = null; renderVisit(); };
-}
-
-connect();
-</script>
+<script type="module" src="/js/app.js"></script>
 </body>
 </html>

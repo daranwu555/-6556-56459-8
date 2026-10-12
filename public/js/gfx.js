@@ -4,8 +4,18 @@ import { GLTFLoader } from 'three/jsm/GLTFLoader.js';
 import { OrbitControls } from 'three/jsm/OrbitControls.js';
 
 const loader = new GLTFLoader();
+// 單機版會把模型／材質內嵌成 data URL（window.__EMBED），這裡統一轉換路徑
+const resolve = (u) => { const e = window.__EMBED; const k = String(u).replace(/^\//, ''); return (e && e[k]) || u; };
+export const assetUrl = (p) => resolve('/' + String(p).replace(/^\//, ''));
 const cache = new Map();
-const loadScene = (url) => { if (!cache.has(url)) cache.set(url, loader.loadAsync(url).then((g) => g.scene)); return cache.get(url); };
+const b64ToBuf = (dataUrl) => { const b = atob(dataUrl.slice(dataUrl.indexOf(',') + 1)), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; };
+const loadScene = (url) => {
+  if (!cache.has(url)) {
+    const r = resolve(url); // 內嵌資源直接解碼，不走 fetch（避免被網頁安全政策擋掉）
+    cache.set(url, (r.startsWith('data:') ? loader.parseAsync(b64ToBuf(r), '') : loader.loadAsync(r)).then((g) => g.scene));
+  }
+  return cache.get(url);
+};
 export async function instance(url) {
   const c = (await loadScene(url)).clone(true);
   c.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -14,7 +24,7 @@ export async function instance(url) {
 const texLoader = new THREE.TextureLoader();
 const texCache = new Map();
 function texture(url, rx, ry) {
-  if (!texCache.has(url)) { const t = texLoader.load('/' + url); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; texCache.set(url, t); }
+  if (!texCache.has(url)) { const t = texLoader.load(resolve('/' + url)); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; texCache.set(url, t); }
   const t = texCache.get(url).clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return t;
 }
 
@@ -246,7 +256,7 @@ async function renderThumb(url) {
   return data;
 }
 export function thumb(it) {
-  if (it.tex) return Promise.resolve('/' + it.tex);
+  if (it.tex) return Promise.resolve(assetUrl(it.tex));
   if (!thumbCache.has(it.id)) { const p = (chain = chain.then(() => renderThumb('/' + it.model)).catch(() => '')); thumbCache.set(it.id, p); }
   return thumbCache.get(it.id);
 }

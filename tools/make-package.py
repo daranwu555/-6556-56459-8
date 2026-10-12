@@ -6,8 +6,8 @@ out = os.path.join(root, 'downloads', 'house-quiz-game.zip')
 os.makedirs(os.path.dirname(out), exist_ok=True)
 if os.path.exists(out): os.remove(out)
 top = 'house-quiz-game'
-files = ['server.js', 'catalog.js', 'questions.js', 'funny.js', 'qbank_open.js', 'qbank_more.js', 'qbank_vocab.js', 'qbank_brain.js', 'qbank_phil.js', 'package.json', 'package-lock.json', 'README.md', 'Dockerfile']
-dirs = ['public', 'qdata', 'tools', 'downloads/question-bank.csv']
+files = ['server.js', 'catalog.js', 'questions.js', 'funny.js', 'qbank_open.js', 'qbank_more.js', 'qbank_vocab.js', 'qbank_brain.js', 'qbank_phil.js', 'core.js', 'package.json', 'package-lock.json', 'README.md', 'Dockerfile']
+dirs = ['public', 'qdata', 'src', 'tools', 'downloads/question-bank.csv']
 
 BAT_HEAD = '@echo off\r\nchcp 65001 >nul\r\ncd /d "%~dp0"\r\ntitle 小屋大亨\r\nwhere node >nul 2>nul\r\nif errorlevel 1 (\r\n  echo [錯誤] 找不到 Node.js。\r\n  echo 請先安裝 Node.js（LTS 版）：https://nodejs.org ，安裝完成後重新雙擊本檔案。\r\n  start https://nodejs.org\r\n  pause\r\n  exit /b 1\r\n)\r\necho 目前的 Node.js 版本：\r\nnode -v\r\n'
 BAT_TAIL = 'set OPEN_BROWSER=1\r\nnode server.js\r\necho.\r\necho 伺服器已停止。如果一開始就停止，請把上面的紅字錯誤訊息截圖給我。\r\npause\r\n'
@@ -18,8 +18,14 @@ scripts = {
     'start-test.sh': '#!/bin/bash\ncd "$(dirname "$0")"\nif ! command -v node >/dev/null; then echo "找不到 Node.js，請先安裝：https://nodejs.org"; exit 1; fi\nexport START_MONEY=500000\necho "測試模式：新帳號起始金額 500,000 元"\nOPEN_BROWSER=1 node server.js\n',
     'start.command': '#!/bin/bash\ncd "$(dirname "$0")"\nif ! command -v node >/dev/null; then echo "找不到 Node.js，請先安裝：https://nodejs.org"; read -p "按 Enter 結束"; exit 1; fi\nnode -v\nOPEN_BROWSER=1 node server.js\nread -p "伺服器已停止，按 Enter 結束"\n',
 }
-readme = '''小屋大亨 — 測試版（Q 版武俠・3D 房屋・連線問答）
+readme = '''小屋大亨 — 測試版（古代武俠 Q 版・3D 房屋・答題問答）
 ================================================
+
+【最簡單：單機版】不用安裝任何東西
+  雙擊「小屋大亨(單機版).html」，用 Chrome / Edge 開啟即可遊玩（對戰電腦、換裝、蓋房、排行榜皆可；存檔在瀏覽器裡）。
+  單機版沒有「線上配對／好友對戰」。要多人連線才需要下面的 Node.js 伺服器版。
+
+【伺服器版（可多人連線，需要安裝 Node.js）】
 
 【需要】Node.js 18 以上（https://nodejs.org 下載 LTS 版）。不需要另外安裝套件（已附 ws）。
         Node 22 以上用內建 SQLite 存檔；較舊版本會自動改用 JSON 檔存檔，功能相同。
@@ -71,5 +77,7 @@ for name, txt in scripts.items():
     zi = zipfile.ZipInfo(f'{top}/{name}'); zi.compress_type = zipfile.ZIP_DEFLATED; zi.external_attr = (0o755 | 0o100000) << 16
     z.writestr(zi, txt.encode('utf8'))
 z.writestr(f'{top}/測試說明.txt', readme.encode('utf8'))
+sa = os.path.join(root, 'dist', '小屋大亨.html')
+if os.path.exists(sa): z.write(sa, f'{top}/小屋大亨(單機版).html')
 z.close()
 print(os.path.getsize(out) // 1024, 'KB')
