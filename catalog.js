@@ -96,20 +96,28 @@ const RAW = {
 // 建材（放倉庫，用來擴建房屋）：[名稱, emoji, 價格]
 const MATERIALS = [['木材', '🪵', 20], ['磚塊', '🧱', 30], ['水泥', '🪨', 25], ['玻璃', '🪟', 40], ['鋼筋', '⛓️', 60]];
 
+// 家具佔地（公尺，寬 × 深）
+const FP = { table: [[0.8, 0.8], [1.9, 0.95]], bed: [[1.7, 2.2], [1.7, 2.2]], mattress: [[1.6, 2.1], [1.6, 2.1]], pc: [[1.1, 0.7], [1.1, 0.7]], tv: [[1.3, 0.5], [1.3, 0.5]], wardrobe: [[1.05, 0.6], [1.05, 0.6]], decor: [[0.5, 0.5], [0.5, 0.5]] };
+// 持有上限：同一件商品最多持有幾件（賣出後可再買）
+const LIMIT = { wear: 1, wall: 2, floor: 2, furn: 3, mat: 30 };
+
 const ITEMS = {};
 MATERIALS.forEach(([name, emoji, price], i) => {
-  const id = 'material_' + ['wood', 'brick', 'cement', 'glass', 'steel'][i];
-  ITEMS[id] = { id, cat: 'material', style: 'none', name, emoji, price, kind: 'mat' };
+  const key = ['wood', 'brick', 'cement', 'glass', 'steel'][i];
+  const id = 'material_' + key;
+  ITEMS[id] = { id, cat: 'material', style: 'none', name, emoji, price, kind: 'mat', limit: LIMIT.mat, model: `models/material/${id}.glb` };
 });
 for (const cat of Object.keys(RAW)) {
   for (const style of Object.keys(RAW[cat])) {
     RAW[cat][style].forEach(([name, art, price], i) => {
       const id = `${cat}_${style}_${i}`;
       const kind = CATS[cat].kind;
-      ITEMS[id] = {
-        id, cat, style, name, price, kind,
-        ...(kind === 'wall' || kind === 'floor' ? { css: art } : { emoji: art }),
-      };
+      const it = { id, cat, style, name, price, kind, limit: cat === 'decor' ? 5 : LIMIT[kind] };
+      if (kind === 'wall' || kind === 'floor') it.tex = `textures/${id}.png`;
+      else it.emoji = art;
+      if (kind === 'wear') it.model = `models/wear/${id}.glb`;
+      if (kind === 'furn') { it.model = `models/furniture/${id}.glb`; it.fp = FP[cat][i]; it.layer = cat === 'mattress' ? 'top' : 'base'; }
+      ITEMS[id] = it;
     });
   }
 }

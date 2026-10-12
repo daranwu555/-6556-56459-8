@@ -10,7 +10,7 @@ const { buildMatchQuestions, bankSize } = require('./questions');
 
 // ───────── 遊戲參數（想調整數值改這裡）─────────
 const CFG = {
-  startMoney: 1000,
+  startMoney: Number(process.env.START_MONEY) || 1000,
   entryFee: 50,
   questions: 10,
   questionMs: 15000,
@@ -20,7 +20,8 @@ const CFG = {
   baseMoney: 10,             // 答對一題基本金額
   comboMul: 1.2,             // 老手連答倍率（+20%）
   noviceMul: 1.6,            // 新手連答倍率（+60%）
-  noviceLevel: 4,            // 等級 <= 此值視為新手
+  noviceLevel: 15,           // 等級 <= 此值視為新手
+  likeReward: 5,             // 被按讚的玩家獲得的金額
   expPerQuestion: 10,
   comboBonus: { 5: { money: 20, exp: 10 }, 8: { money: 50, exp: 30 }, 10: { money: 100, exp: 50 } },
   firstLevelExp: 200,
@@ -29,7 +30,7 @@ const CFG = {
   warehouse: { base: 50, upgradeCap: 5, upgradeBase: 150 }, // 倉庫放建材
   shopBuild: 300,
   sellRate: 0.35,
-  // 房屋等級：第 n 項 = 擴建到等級 n+1 的條件
+  // 房屋等級：cols × rows 為房間大小（公尺）；第 n 項 = 擴建到等級 n+1 的條件
   houseLevels: [
     { cols: 6, rows: 4 },
     { cols: 7, rows: 4, money: 300, mats: { material_wood: 5, material_brick: 5 } },
@@ -59,7 +60,8 @@ const qstats = new Map();    // qid -> {n,c}
 const dirty = new Set(), dirtyQ = new Set();
 
 for (const r of db.prepare('SELECT username, profile FROM accounts').all()) {
-  const p = JSON.parse(r.profile); players.set(r.username, p); byToken.set(p.token, p); byPid.set(p.pid, p);
+  const p = JSON.parse(r.profile);
+  if (p.house.placed.some((x) => !Number.isFinite(x.z))) p.house.placed = []; // 舊版格子資料 players.set(r.username, p); byToken.set(p.token, p); byPid.set(p.pid, p);
 }
 for (const r of db.prepare('SELECT id, n, c FROM qstats').all()) qstats.set(r.id, { n: r.n, c: r.c });
 
@@ -275,17 +277,22 @@ function validateHouse(p, h) {
   const out = { wall: null, carpet: null, placed: [] };
   if (h.wall) { const it = ITEMS[h.wall]; if (!it || it.cat !== 'wall' || !use(h.wall)) return '牆壁不合法'; out.wall = h.wall; }
   if (h.carpet) { const it = ITEMS[h.carpet]; if (!it || it.cat !== 'carpet' || !use(h.carpet)) return '地毯不合法'; out.carpet = h.carpet; }
-  if (!Array.isArray(h.placed) || h.placed.length > cols * rows * 2) return '擺放資料錯誤';
-  const cells = new Set();
+  if (!Array.isArray(h.placed) || h.placed.length > 80) return '擺放資料錯誤';
   for (const pl of h.placed) {
     const it = pl && ITEMS[pl.id];
     if (!it || !FURN.has(it.cat)) return '家具不合法';
-    if (!Number.isInteger(pl.x) || !Number.isInteger(pl.y) || pl.x < 0 || pl.y < 0 || pl.x >= cols || pl.y >= rows) return '位置超出範圍';
-    const key = `${pl.x},${pl.y},${it.cat === 'mattress' ? 'm' : 'f'}`; // 床墊可疊在其他家具上
-    if (cells.has(key)) return '該格已有家具';
-    cells.add(key);
+    if (!Number.isFinite(pl.x) || !Number.isFinite(pl.z) || !Number.isInteger(pl.rot) || pl.rot < 0 || pl.rot > 3) return '位置資料錯誤';
+    const [w, d] = pl.rot % 2 ? [it.fp[1], it.fp[0]] : it.fp;
+    const x = Math.round(pl.x * 100) / 100, z = Math.round(pl.z * 100) / 100;
+    if (Math.abs(x) > cols / 2 - w / 2 + 1e-6 || Math.abs(z) > rows / 2 - d / 2 + 1e-6) return '家具超出房間範圍';
+    for (const o of out.placed) { // 同一層（地面 / 床墊）的家具不可重疊
+      const oi = ITEMS[o.id];
+      if (oi.layer !== it.layer) continue;
+      const [ow, od] = o.rot % 2 ? [oi.fp[1], oi.fp[0]] : oi.fp;
+      if (Math.abs(x - o.x) < (w + ow) / 2 - 1e-6 && Math.abs(z - o.z) < (d + od) / 2 - 1e-6) return '家具不能重疊';
+    }
     if (!use(pl.id)) return '你沒有足夠的家具';
-    out.placed.push({ id: pl.id, x: pl.x, y: pl.y });
+    out.placed.push({ id: pl.id, x, z, rot: pl.rot });
   }
   p.house = out;
   return null;
@@ -293,9 +300,9 @@ function validateHouse(p, h) {
 
 const visitView = (p, viewer) => ({ pid: p.pid, name: p.name, gender: p.gender, level: p.level, houseLv: p.houseLv, cols: gridOf(p).cols, rows: gridOf(p).rows, house: p.house, worn: p.worn, likes: p.likes, liked: p.likedBy.includes(viewer.username) });
 
-function boardData() {
+function boardData(viewer) {
   const all = [...players.values()];
-  const row = (p) => ({ pid: p.pid, name: p.name, gender: p.gender, level: p.level, wins: p.stats.wins, bestCombo: p.stats.bestCombo, likes: p.likes, houseLv: p.houseLv });
+  const row = (p) => ({ pid: p.pid, name: p.name, gender: p.gender, level: p.level, wins: p.stats.wins, bestCombo: p.stats.bestCombo, likes: p.likes, houseLv: p.houseLv, self: p === viewer, liked: p.likedBy.includes(viewer.username) });
   const top = (f) => all.slice().sort((a, b) => f(b) - f(a)).slice(0, 10).filter((p) => f(p) > 0).map(row);
   return { wins: top((p) => p.stats.wins), combo: top((p) => p.stats.bestCombo), likes: top((p) => p.likes), level: top((p) => p.level * 1e6 + p.exp), active: all.slice().sort((a, b) => b.lastSeen - a.lastSeen).slice(0, 10).map(row) };
 }
@@ -319,6 +326,7 @@ function handle(sess, m) {
       if (!p.shop) return err('請先建造商店');
       const it = ITEMS[m.id];
       if (!it) return err('沒有這個商品');
+      if ((p.owned[it.id] || 0) >= it.limit) return err(`「${it.name}」最多只能持有 ${it.limit} 件（已達上限）`);
       if (p.money < it.price) return err('金錢不足');
       if (it.kind === 'mat' && matCount(p) >= capacity(p)) return err('倉庫已滿，請先升級倉庫或賣出建材');
       p.money -= it.price; p.owned[it.id] = (p.owned[it.id] || 0) + 1;
@@ -362,7 +370,7 @@ function handle(sess, m) {
       } else delete p.worn[m.slot];
       return ok();
     }
-    case 'board': return send(sess, { t: 'board', ...boardData() });
+    case 'board': return send(sess, { t: 'board', ...boardData(p) });
     case 'visit': {
       const t = byPid.get(String(m.pid));
       if (!t) return err('找不到這位玩家');
@@ -372,9 +380,10 @@ function handle(sess, m) {
       const t = byPid.get(String(m.pid));
       if (!t || t === p) return err('無法按讚');
       if (t.likedBy.includes(p.username)) return err('你已經按過讚了');
-      t.likedBy.push(p.username); t.likes++; touch(t);
-      send(sess, { t: 'visit', v: visitView(t, p) });
-      sessions.forEach((s) => { if (s.p === t) pushProfile(s); });
+      t.likedBy.push(p.username); t.likes++; t.money += CFG.likeReward; touch(t);
+      send(sess, { t: 'likeOk', pid: t.pid, likes: t.likes });
+      if (m.visit) send(sess, { t: 'visit', v: visitView(t, p) });
+      sessions.forEach((s) => { if (s.p === t) { pushProfile(s); send(s, { t: 'toast', msg: `❤️ ${p.name} 幫你的房子按讚，獲得 ${CFG.likeReward} 元！` }); } });
       return;
     }
   }
@@ -406,15 +415,16 @@ function auth(sess, m) {
   send(sess, {
     t: 'welcome', token: p.token, p: publicProfile(p),
     catalog: { items: ITEMS, cats: CATS, styles: STYLES },
-    cfg: { entryFee: CFG.entryFee, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, noviceLevel: CFG.noviceLevel, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
+    cfg: { entryFee: CFG.entryFee, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, noviceLevel: CFG.noviceLevel, likeReward: CFG.likeReward, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
   });
   broadcastOnline();
 }
 
 // ───────── HTTP + WS ─────────
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const MIME = { '.glb': 'model/gltf-binary', '.png': 'image/png', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 const server = http.createServer((req, res) => {
   let f = decodeURIComponent(req.url.split('?')[0]);
+  if (f === '/catalog.json') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ items: ITEMS, cats: CATS, styles: STYLES })); }
   if (f === '/healthz') { res.writeHead(200); return res.end('ok'); }
   if (f === '/') f = '/index.html';
   const root = path.join(__dirname, 'public');

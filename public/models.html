@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小屋大亨 — 3D 模型庫</title>
+<script type="importmap">{"imports":{"three":"/vendor/three/three.module.js","three/jsm/":"/vendor/three/jsm/"}}</script>
+<style>
+body{margin:0;background:#1a1c2c;color:#f4f4f4;font:14px system-ui,"Noto Sans TC",sans-serif;padding:16px}
+h1{margin:0 0 4px}.mut{color:#a9b0d0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:12px 0 24px}
+.c{background:#292d45;border:3px solid #0b0c16;padding:8px;text-align:center}
+.c img{width:100%;aspect-ratio:1;object-fit:contain;image-rendering:auto}
+.c a{color:#ffcd75;font-size:12px;word-break:break-all}
+h2{margin:18px 0 0}
+</style></head><body>
+<h1>🏠 小屋大亨 — 3D 模型庫</h1>
+<div class="mut">所有模型都是 glTF 2.0 二進位檔（.glb），可直接用 Blender / Three.js / Unity / Godot 開啟。點「下載」取得檔案。</div>
+<div id="out"></div>
+<script type="module">
+import { thumb } from '/js/gfx.js';
+const cat = await (await fetch('/catalog.json')).json();
+const groups = {};
+for (const it of Object.values(cat.items)) (groups[it.cat] ||= []).push(it);
+const out = document.getElementById('out');
+const extra = [{ id: 'body_m', name: '角色本體（男）', model: 'models/body_m.glb', style: 'none' }, { id: 'body_f', name: '角色本體（女）', model: 'models/body_f.glb', style: 'none' }];
+const blocks = [['角色', extra], ...Object.entries(groups).map(([k, v]) => [cat.cats[k].label, v])];
+for (const [label, list] of blocks) {
+  const h = document.createElement('h2'); h.textContent = label; out.appendChild(h);
+  const g = document.createElement('div'); g.className = 'grid'; out.appendChild(g);
+  for (const it of list) {
+    const d = document.createElement('div'); d.className = 'c';
+    const file = it.model || it.tex;
+    d.innerHTML = `<img alt=""><div>${it.name}</div><a href="/${file}" download>下載 ${file.split('/').pop()}</a>`;
+    g.appendChild(d);
+    thumb(it.model ? it : it).then((src) => { if (src) d.querySelector('img').src = src; });
+  }
+}
+</script></body></html>

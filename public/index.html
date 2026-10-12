@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>小屋大亨 — 問答賺錢蓋房子</title>
+<script type="importmap">{"imports":{"three":"/vendor/three/three.module.js","three/jsm/":"/vendor/three/jsm/"}}</script>
 <style>
 :root{--bg:#1a1c2c;--card:#292d45;--card2:#3a4066;--txt:#f4f4f4;--mut:#a9b0d0;--acc:#ffcd75;--ok:#38b764;--bad:#ef4d5c;--blue:#41a6f6;--ink:#0b0c16}
 *{box-sizing:border-box}
@@ -32,24 +33,15 @@ h2,h3{margin:0 0 10px}
 .bar>i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--blue) 0 8px,#73eff7 8px 10px);transition:width .4s}
 nav{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 nav button{flex:1;min-width:80px;padding:9px 4px}
-/* 房間 */
-.room{position:relative;width:100%;max-width:660px;border:4px solid var(--ink);overflow:hidden;container-type:inline-size;image-rendering:pixelated}
-.wall{position:absolute;inset:0 0 auto 0;background:#3a3f4b;border-bottom:4px solid #0006}
-.floor{position:absolute;inset:auto 0 0 0;display:grid;background:#6b5b4b}
-.floor::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,#0000 0 calc(100% / var(--rows) - 2px),#0002 calc(100% / var(--rows) - 2px) calc(100% / var(--rows)))}
-.cell{position:relative;border:1px dashed rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:calc(100cqw / var(--cols) * .66);background:transparent;padding:0;box-shadow:none;border-radius:0;z-index:1;line-height:1}
-.cell:hover{background:rgba(255,255,255,.12)}
-.cell:active:not(:disabled){transform:none}
-.cell:disabled{opacity:1;cursor:default}
-.cell .m{position:absolute;font-size:.72em;transform:translateY(24%)}
-.sty-cool{filter:grayscale(.85) brightness(.85) contrast(1.15)}
-.sty-cute{filter:sepia(.35) saturate(1.5) hue-rotate(305deg)}
-.sty-fun{filter:saturate(2.2)}
+.stage3d{position:relative;width:100%;height:min(64vh,540px);min-height:320px;border:4px solid var(--ink);background:linear-gradient(#8fb9e8,#e7d9c4 70%);overflow:hidden;touch-action:none}
+.stage3d.dark{background:radial-gradient(circle at 50% 35%,#4a4f7a,#1a1c2c)}
+.stage3d canvas{width:100%;height:100%}
+.sty-cool,.sty-cute,.sty-fun{filter:none}
 .tray{display:flex;flex-wrap:wrap;gap:8px}
-.it{background:var(--card2);padding:8px;width:106px;text-align:center;border:3px solid var(--ink)}
+.it{background:var(--card2);padding:8px;width:118px;text-align:center;border:3px solid var(--ink)}
 .it.sel{border-color:var(--acc)}
-.it .ic{font-size:34px;height:44px;display:flex;align-items:center;justify-content:center}
-.it .sw{height:40px;margin-bottom:4px;border:2px solid #0008}
+.it img{width:100%;height:84px;object-fit:contain;display:block;margin-bottom:2px}
+.it img.tx{object-fit:cover;border:2px solid #0008;height:70px;margin-bottom:6px}
 .it .nm{font-size:12px;line-height:1.3;min-height:32px}
 .it .pr{font-weight:700;color:var(--acc);font-size:13px}
 .it button{margin-top:4px;padding:2px 6px;font-size:12px;width:100%;border-width:2px;box-shadow:0 2px 0 var(--ink)}
@@ -57,8 +49,6 @@ nav button{flex:1;min-width:80px;padding:9px 4px}
 .tag.cool{background:#46506b}.tag.cute{background:#a64d79}.tag.fun{background:#b0791a}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .chips button{padding:2px 10px;font-size:13px;border-width:2px}
-.avatar{text-align:center;min-width:140px;background:var(--card2);padding:10px;border:3px solid var(--ink)}
-.avatar svg{width:112px;height:auto;shape-rendering:crispEdges}
 /* 問答 */
 .opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
 @media(max-width:560px){.opts{grid-template-columns:1fr}}
@@ -121,6 +111,7 @@ tr.link{cursor:pointer}tr.link:hover{background:#0003}
       <button data-v="house">🏠 房屋</button>
       <button data-v="ware">📦 倉庫</button>
       <button data-v="shop">🏪 商店</button>
+      <button data-v="dress">👗 更衣室</button>
       <button data-v="quiz">🎯 連線問答</button>
       <button data-v="social">🏆 排行/社交</button>
     </nav>
@@ -128,19 +119,35 @@ tr.link{cursor:pointer}tr.link:hover{background:#0003}
 
   <section id="v-house" class="view">
     <div class="card">
-      <div class="row" style="align-items:flex-start">
-        <div class="grow" style="min-width:300px">
-          <div class="room" id="room"></div>
-          <div class="mut" id="houseHint" style="margin-top:6px"></div>
-        </div>
-        <div class="avatar" id="avatar"></div>
+      <div class="row" style="margin-bottom:8px">
+        <button id="hRot">🔄 旋轉 (R)</button><button id="hRemove">📦 收回到倉庫</button><button id="hCancel">↩ 取消 (Esc)</button>
+        <span class="mut grow" id="houseHint"></span>
       </div>
+      <div class="stage3d" id="room3d"></div>
+      <div class="mut" style="margin-top:6px">拖曳旋轉視角、滾輪縮放；選好家具後點地板擺放，綠色=可放、紅色=重疊；點已擺放的家具可拿起來移動。</div>
     </div>
     <div class="card" id="expandBox"></div>
     <div class="card">
-      <h3>我的家具與服飾（點選家具後，再點房間格子擺放；點已擺放的家具可收回）</h3>
+      <h3>我的家具（牆壁/地毯點一下即可套用）</h3>
       <div class="chips" id="houseChips"></div>
       <div class="tray" id="houseTray"></div>
+    </div>
+  </section>
+
+  <section id="v-dress" class="view hidden">
+    <div class="card">
+      <div class="row" style="align-items:flex-start">
+        <div class="grow" style="min-width:300px">
+          <div class="stage3d dark" id="dress3d"></div>
+          <div class="chips" style="margin-top:8px" id="dressCam"></div>
+        </div>
+        <div class="grow" style="min-width:300px;flex:1.3">
+          <div class="chips" id="dressSlots"></div>
+          <div class="chips" id="dressStyle"></div>
+          <div class="tray" id="dressTray"></div>
+          <p class="mut" id="dressNote"></p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -162,7 +169,7 @@ tr.link{cursor:pointer}tr.link:hover{background:#0003}
   <section id="v-quiz" class="view hidden">
     <div class="card" id="quizLobby">
       <h3>🎯 連線問答</h3>
-      <p>每場 10 題選擇題，參加費 <b>50 元</b>。答對賺錢，連答有加成；每答一題都有 10 經驗！</p>
+      <p>每場 10 題選擇題（所有問答題都會自動變成四選一），參加費 <b>50 元</b>。答對賺錢，連答有加成；每答一題都有 10 經驗！</p>
       <p><span class="badge" id="myMul"></span> <span class="mut" id="mulHint"></span></p>
       <div class="mut">答對 10 元 → 連答依序疊加倍率　連 5 題 +20元+10經驗　連 8 題 +50元+30經驗　全對 +100元+50經驗</div>
       <div class="row" style="margin-top:14px">
@@ -195,13 +202,14 @@ tr.link{cursor:pointer}tr.link:hover{background:#0003}
       <div style="overflow-x:auto"><table id="boardTbl"></table></div>
       <p class="mut">點選玩家可以拜訪他的房子並按讚。</p>
     </div>
-    <div class="card hidden" id="visitBox"></div>
+    <div class="card hidden" id="visitBox"><div class="row"><h3 class="grow" id="vTitle"></h3><button id="vLike"></button><button id="vClose">關閉</button></div><div class="stage3d" id="visit3d"></div><div class="mut" id="vStyle" style="margin-top:6px"></div></div>
   </section>
 </div>
 </div>
 <div class="toast hidden" id="toast"></div>
 
-<script>
+<script type="module">
+import { HouseView, DressView, hydrateThumbs } from '/js/gfx.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let ws, P = null, CAT = null, CFG = null, gender = 'm', view = 'house', mode = 'login';
@@ -247,6 +255,7 @@ function onMsg(m) {
     case 'reveal': showReveal(m); break;
     case 'end': showEnd(m); break;
     case 'board': board = m; renderBoard(); break;
+    case 'likeOk': toast(`👍 已按讚，對方獲得 ${CFG.likeReward} 元！`); send({ t: 'board' }); break;
     case 'visit': visiting = m.v; renderVisit(); break;
   }
 }
@@ -277,21 +286,21 @@ function renderAll() {
   document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.v === view));
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('hidden', v.id !== 'v-' + view));
   if (view === 'house') renderHouse();
+  if (view === 'dress') renderDress();
   if (view === 'ware') renderWare();
   if (view === 'shop') renderShop();
   if (view === 'quiz') renderLobby();
   if (view === 'social') { renderBoard(); renderVisit(); }
 }
 
-// ───── 共用：物品 / 房間 / 角色 ─────
+// ───── 共用：物品 / 縮圖 ─────
 const I = (id) => CAT.items[id];
-function art(it) {
-  if (it.css) return `<div class="sw" style="background:${it.css}"></div>`;
-  return `<div class="ic sty-${it.style}">${it.emoji}</div>`;
-}
+const thumbImg = (it) => `<img data-thumb="${it.id}" class="${it.tex ? 'tx' : ''}" alt="${esc(it.name)}" ${it.tex ? `src="/${it.tex}"` : ''}>`;
 const tag = (it) => (it.style === 'none' ? '' : `<span class="tag ${it.style}">${CAT.styles[it.style]}</span>`);
-const placedN = (id) => P.house.placed.filter((x) => x.id === id).length;
-const inUse = (id) => placedN(id) + Object.values(P.worn).filter((x) => x === id).length + (P.house.wall === id ? 1 : 0) + (P.house.carpet === id ? 1 : 0);
+const hydrate = (el) => hydrateThumbs(el, CAT.items);
+const wornN = (id) => Object.values(P.worn).filter((x) => x === id).length;
+const inUse = (id) => work.placed.filter((x) => x.id === id).length + wornN(id) + (work.wall === id ? 1 : 0) + (work.carpet === id ? 1 : 0);
+const placedN = (id) => work.placed.filter((x) => x.id === id).length;
 
 function chips(el, entries, cur, cb) {
   el.innerHTML = '';
@@ -300,104 +309,104 @@ function chips(el, entries, cur, cb) {
     b.onclick = () => cb(k); el.appendChild(b);
   });
 }
-
-// 畫出一間房子；onCell 有值時可互動
-function drawRoom(el, d, onCell) {
-  const WALL = 1.6, total = d.rows + WALL;
-  el.style.aspectRatio = `${d.cols} / ${total}`;
-  el.style.setProperty('--cols', d.cols); el.style.setProperty('--rows', d.rows);
-  el.innerHTML = `<div class="wall" style="height:${(WALL / total) * 100}%;background:${d.house.wall ? I(d.house.wall).css : '#3a3f4b'}"></div>
-    <div class="floor" style="height:${(d.rows / total) * 100}%;grid-template-columns:repeat(${d.cols},1fr);grid-template-rows:repeat(${d.rows},1fr);background:${d.house.carpet ? I(d.house.carpet).css : '#6b5b4b'}"></div>`;
-  const floor = el.querySelector('.floor');
-  for (let y = 0; y < d.rows; y++) for (let x = 0; x < d.cols; x++) {
-    const here = d.house.placed.filter((p) => p.x === x && p.y === y);
-    const base = here.find((p) => I(p.id).cat !== 'mattress'), mat = here.find((p) => I(p.id).cat === 'mattress');
-    const c = document.createElement('button'); c.className = 'cell';
-    c.innerHTML = (base ? `<span class="sty-${I(base.id).style}">${I(base.id).emoji}</span>` : '') + (mat ? `<span class="m sty-${I(mat.id).style}">${I(mat.id).emoji}</span>` : '');
-    if (onCell) c.onclick = () => onCell(x, y, base, mat); else c.disabled = true;
-    floor.appendChild(c);
-  }
-}
-const COL = { cool: '#3b4256', cute: '#ff8fb8', fun: '#ffcf3d' };
-function avatarSVG(g, w) {
-  const e = (id) => (id ? I(id).emoji : ''), c = (id, d) => (id ? COL[I(id).style] : d);
-  const suit = w.suit, topC = c(suit || w.top, '#9aa0b8'), botC = suit ? topC : c(w.bottom, '#5d6683');
-  const hair = g === 'm' ? '<rect x="22" y="14" width="28" height="9" fill="#3b2a1e"/>' : '<rect x="20" y="14" width="32" height="10" fill="#6b3e26"/><rect x="20" y="22" width="6" height="22" fill="#6b3e26"/><rect x="46" y="22" width="6" height="22" fill="#6b3e26"/>';
-  return `<svg viewBox="0 0 72 112" xmlns="http://www.w3.org/2000/svg">
-    ${hair}<rect x="24" y="22" width="24" height="22" fill="#f5cfa0"/><rect x="29" y="30" width="4" height="4" fill="#111"/><rect x="39" y="30" width="4" height="4" fill="#111"/><rect x="31" y="38" width="10" height="2" fill="#a0453a"/>
-    <rect x="20" y="46" width="32" height="28" fill="${topC}"/><rect x="12" y="46" width="8" height="24" fill="${topC}"/><rect x="52" y="46" width="8" height="24" fill="${topC}"/>
-    <rect x="22" y="74" width="12" height="22" fill="${botC}"/><rect x="38" y="74" width="12" height="22" fill="${botC}"/>
-    <rect x="20" y="96" width="16" height="8" fill="${c(w.shoes, '#222')}"/><rect x="36" y="96" width="16" height="8" fill="${c(w.shoes, '#222')}"/>
-    <text x="36" y="14" font-size="16" text-anchor="middle">${e(w.head)}</text>
-    <text x="36" y="66" font-size="16" text-anchor="middle">${e(suit || w.top)}</text>
-    ${suit ? '' : `<text x="36" y="90" font-size="13" text-anchor="middle">${e(w.bottom)}</text>`}
-    <text x="36" y="108" font-size="11" text-anchor="middle">${e(w.shoes)}</text></svg>`;
-}
 function styleLine(d) {
   const ids = [d.house.wall, d.house.carpet, ...d.house.placed.map((x) => x.id), ...Object.values(d.worn || {})].filter(Boolean);
   if (!ids.length) return '';
   const c = {}; ids.forEach((id) => { const s = I(id).style; c[s] = (c[s] || 0) + 1; });
   const [top, n] = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
-  const pct = Math.round((n / ids.length) * 100);
-  const sb = CFG.styleBonus;
+  const pct = Math.round((n / ids.length) * 100), sb = CFG.styleBonus;
   return `房屋風格：${CAT.styles[top]} ${pct}%` + (pct >= sb.ratio * 100 && ids.length >= sb.minItems ? ` ✨ 風格加成：答題金錢 +${sb.rate * 100}%` : `（風格 ≥${sb.ratio * 100}% 且至少 ${sb.minItems} 件，答題金錢 +${sb.rate * 100}%）`);
 }
 
-// ───── 房屋 ─────
-function renderHouse() {
-  drawRoom($('#room'), { cols: P.cols, rows: P.rows, house: P.house }, cellClick);
-  $('#houseHint').textContent = (sel ? `已選取：${I(sel).name} → 點格子擺放。` : '點選下方家具開始佈置。') + ' ' + styleLine(P);
-  $('#avatar').innerHTML = avatarSVG(P.gender, P.worn) + `<div class="mut">${esc(P.name)}　房屋 Lv.${P.houseLv}</div>`;
+// ───── 房屋（3D）─────
+let houseStage = null, work = { wall: null, carpet: null, placed: [] }, hold = null;
+const cloneHouse = (h) => JSON.parse(JSON.stringify(h));
+function ensureHouseStage() {
+  if (houseStage) return;
+  houseStage = new HouseView($('#room3d'), { interactive: true, onPlace, onPick, onInvalid: () => toast('這裡放不下，換個位置吧') });
+  houseStage.setItems(CAT.items);
+  window.addEventListener('keydown', (e) => { if (view !== 'house' || !hold) return; if (e.key === 'r' || e.key === 'R') rotateHold(); if (e.key === 'Escape') cancelHold(); });
+}
+const sendHouse = () => send({ t: 'house', house: work });
+function setHold(h) { hold = h; houseStage.setHold(h && h.id, h && h.rot); renderHouse(); }
+function rotateHold() { if (hold) { hold.rot = (hold.rot + 1) % 4; houseStage.setHold(hold.id, hold.rot); } }
+function cancelHold() { if (!hold) return; if (hold.orig) work = cloneHouse(P.house); setHold(null); }
+function onPlace(pl) {
+  work.placed.push({ id: pl.id, x: pl.x, z: pl.z, rot: pl.rot });
+  const left = P.owned[pl.id] - placedN(pl.id);
+  sendHouse();
+  if (hold.orig || left <= 0) { hold = null; houseStage.setHold(null); } else hold.orig = null;
+  renderHouse();
+}
+function onPick(i) { const it = work.placed.splice(i, 1)[0]; setHold({ id: it.id, rot: it.rot, orig: it }); }
+$('#hRot').onclick = rotateHold; $('#hCancel').onclick = cancelHold;
+$('#hRemove').onclick = () => { if (hold && hold.orig) { sendHouse(); setHold(null); } else toast('先點擊房間裡的家具，再按收回'); };
 
-  // 擴建
+function renderHouse() {
+  ensureHouseStage();
+  if (!hold) work = cloneHouse(P.house);
+  houseStage.setData({ cols: P.cols, rows: P.rows, house: work, worn: P.worn, gender: P.gender });
+  $('#houseHint').textContent = (hold ? `拿著：${I(hold.id).name}（旋轉 ${hold.rot * 90}°）` : '房屋 Lv.' + P.houseLv + `（${P.cols}×${P.rows} 公尺）`) + '　' + styleLine({ house: work, worn: P.worn });
+
   const next = CFG.houseLevels[P.houseLv];
-  if (!next) $('#expandBox').innerHTML = `<h3>🏗️ 房屋擴建</h3><p>房屋已是最高等級 Lv.${P.houseLv}（${P.cols}×${P.rows}）！</p>`;
+  if (!next) $('#expandBox').innerHTML = `<h3>🏗️ 房屋擴建</h3><p>房屋已是最高等級 Lv.${P.houseLv}（${P.cols}×${P.rows} 公尺）！</p>`;
   else {
     const mats = Object.entries(next.mats).map(([id, n]) => { const have = P.owned[id] || 0; return `<span class="${have >= n ? 'have' : 'need'}">${I(id).emoji}${I(id).name} ${have}/${n}</span>`; }).join('　');
     const can = P.money >= next.money && Object.entries(next.mats).every(([id, n]) => (P.owned[id] || 0) >= n);
-    $('#expandBox').innerHTML = `<h3>🏗️ 房屋擴建 Lv.${P.houseLv} → Lv.${P.houseLv + 1}（${P.cols}×${P.rows} → ${next.cols}×${next.rows}）</h3>
+    $('#expandBox').innerHTML = `<h3>🏗️ 房屋擴建 Lv.${P.houseLv} → Lv.${P.houseLv + 1}（${P.cols}×${P.rows} → ${next.cols}×${next.rows} 公尺）</h3>
       <p>💰 <span class="${P.money >= next.money ? 'have' : 'need'}">${P.money}/${next.money}</span>　${mats}</p>
       <p class="mut">建材到商店購買（需先蓋商店），存放在倉庫。</p><button class="pri" id="expBtn" ${can ? '' : 'disabled'}>擴建房屋</button>`;
     $('#expBtn').onclick = () => send({ t: 'expand' });
   }
 
-  const cats = ['all', ...Object.keys(CAT.cats).filter((k) => CAT.cats[k].kind !== 'mat' && Object.keys(P.owned).some((id) => I(id).cat === k))];
+  const owned = Object.keys(P.owned).filter((id) => ['furn', 'wall', 'floor'].includes(I(id).kind));
+  const cats = ['all', ...Object.keys(CAT.cats).filter((k) => owned.some((id) => I(id).cat === k))];
   chips($('#houseChips'), cats.map((k) => [k, k === 'all' ? '全部' : CAT.cats[k].label]), houseCat, (k) => { houseCat = k; renderHouse(); });
   const tray = $('#houseTray'); tray.innerHTML = '';
-  const ids = Object.keys(P.owned).filter((id) => I(id).kind !== 'mat' && (houseCat === 'all' || I(id).cat === houseCat));
-  if (!ids.length) tray.innerHTML = '<span class="mut">還沒有物品，去商店逛逛吧！（需先建造商店）</span>';
+  const ids = owned.filter((id) => houseCat === 'all' || I(id).cat === houseCat);
+  if (!ids.length) tray.innerHTML = '<span class="mut">還沒有家具，去商店逛逛吧！（需先建造商店）</span>';
   ids.forEach((id) => {
-    const it = I(id), kind = it.kind, d = document.createElement('div'); d.className = 'it' + (sel === id ? ' sel' : '');
-    let btn;
-    if (kind === 'wear') btn = P.worn[it.cat] === id ? '脫下' : '穿上';
-    else if (kind === 'wall') btn = P.house.wall === id ? '取消' : '貼上';
-    else if (kind === 'floor') btn = P.house.carpet === id ? '取消' : '鋪上';
-    else btn = sel === id ? '取消選取' : '選取';
+    const it = I(id), kind = it.kind, d = document.createElement('div'); d.className = 'it' + (hold && hold.id === id ? ' sel' : '');
+    let btn, fn;
+    if (kind === 'wall') { btn = work.wall === id ? '取消' : '貼上'; fn = () => { work.wall = work.wall === id ? null : id; sendHouse(); }; }
+    else if (kind === 'floor') { btn = work.carpet === id ? '取消' : '鋪上'; fn = () => { work.carpet = work.carpet === id ? null : id; sendHouse(); }; }
+    else { btn = hold && hold.id === id ? '放下' : '拿起擺放'; fn = () => (hold && hold.id === id ? (cancelHold(), setHold(null)) : P.owned[id] - placedN(id) > 0 ? setHold({ id, rot: 0, orig: null }) : toast('這件家具都已擺放了')); }
     const left = kind === 'furn' ? ` 剩${P.owned[id] - placedN(id)}` : '';
-    d.innerHTML = `${art(it)}<div class="nm">${esc(it.name)}${left}<br>${tag(it)}</div><button>${btn}</button>`;
-    d.querySelector('button').onclick = () => itemAction(it);
+    d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}${left}<br>${tag(it)}</div><button>${btn}</button>`;
+    d.querySelector('button').onclick = fn;
     tray.appendChild(d);
   });
+  hydrate(tray);
 }
-function itemAction(it) {
-  if (it.kind === 'wear') send({ t: 'equip', slot: it.cat, id: P.worn[it.cat] === it.id ? null : it.id });
-  else if (it.kind === 'wall') send({ t: 'house', house: { ...P.house, wall: P.house.wall === it.id ? null : it.id } });
-  else if (it.kind === 'floor') send({ t: 'house', house: { ...P.house, carpet: P.house.carpet === it.id ? null : it.id } });
-  else { sel = sel === it.id ? null : it.id; renderHouse(); }
-}
-function cellClick(x, y, base, mat) {
-  const H = { ...P.house, placed: P.house.placed.slice() };
-  if (sel) {
-    const isMat = I(sel).cat === 'mattress';
-    if (isMat ? mat : base) return toast('這格已有家具');
-    if (P.owned[sel] - placedN(sel) <= 0) { sel = null; return renderHouse(); }
-    H.placed.push({ id: sel, x, y });
-    if (P.owned[sel] - placedN(sel) - 1 <= 0) sel = null;
-  } else {
-    const target = mat || base; if (!target) return;
-    H.placed = H.placed.filter((p) => p !== target);
+
+
+// ───── 更衣室（3D）─────
+let dressStage = null, dressSlot = 'suit', dressStyle = 'all', tryOn = {};
+const SLOTS = ['head', 'suit', 'top', 'bottom', 'shoes'];
+function renderDress() {
+  if (!dressStage) {
+    dressStage = new DressView($('#dress3d'));
+    chips($('#dressCam'), [['full', '全身'], ['upper', '上半身'], ['head', '頭部'], ['feet', '鞋子'], ['spin', '⏯ 旋轉']], '', (k) => { if (k === 'spin') dressStage.controls.autoRotate = !dressStage.controls.autoRotate; else dressStage.focus(k); });
   }
-  send({ t: 'house', house: H });
+  const look = { ...P.worn, ...tryOn };
+  dressStage.setLook(P.gender, look, CAT.items);
+  chips($('#dressSlots'), SLOTS.map((k) => [k, CAT.cats[k].label]), dressSlot, (k) => { dressSlot = k; renderDress(); });
+  chips($('#dressStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles)], dressStyle, (k) => { dressStyle = k; renderDress(); });
+  const tray = $('#dressTray'); tray.innerHTML = '';
+  Object.values(CAT.items).filter((it) => it.cat === dressSlot && (dressStyle === 'all' || it.style === dressStyle)).forEach((it) => {
+    const own = P.owned[it.id] || 0, worn = P.worn[it.cat] === it.id, trying = tryOn[it.cat] === it.id;
+    const d = document.createElement('div'); d.className = 'it' + (trying || (worn && !tryOn[it.cat]) ? ' sel' : '');
+    d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}<br>${tag(it)}</div>` +
+      (own ? `<div class="mut">已擁有${worn ? '・穿著中' : ''}</div><button data-a="wear">${worn ? '脫下' : '穿上'}</button>` : `<div class="pr">💰 ${it.price}</div><button data-a="try">${trying ? '試穿中' : '試穿'}</button><button data-a="buy" ${P.shop && P.money >= it.price ? '' : 'disabled'}>購買</button>`);
+    d.querySelectorAll('button').forEach((b) => b.onclick = () => {
+      if (b.dataset.a === 'wear') { delete tryOn[it.cat]; send({ t: 'equip', slot: it.cat, id: worn ? null : it.id }); }
+      else if (b.dataset.a === 'try') { tryOn[it.cat] = trying ? undefined : it.id; if (!tryOn[it.cat]) delete tryOn[it.cat]; renderDress(); }
+      else send({ t: 'buy', id: it.id });
+    });
+    tray.appendChild(d);
+  });
+  hydrate(tray);
+  $('#dressNote').textContent = (Object.keys(tryOn).length ? '👀 目前是試穿畫面（未購買的衣服不會被保存）。' : '') + (P.shop ? '' : ' 蓋好商店後才能購買服飾。') + ' 穿套裝時，會覆蓋上衣和下裝。';
 }
 
 // ───── 倉庫 ─────
@@ -412,10 +421,11 @@ function renderWare() {
     if (!ids.length) el.innerHTML = `<span class="mut">${empty}</span>`;
     ids.forEach((id) => {
       const it = I(id), d = document.createElement('div'); d.className = 'it';
-      d.innerHTML = `${art(it)}<div class="nm">${esc(it.name)} ×${P.owned[id]}<br>${tag(it)}${inUse(id) ? `<br><span class="mut">使用中 ${inUse(id)}</span>` : ''}</div>` + (P.shop ? `<button>賣 ${Math.floor(it.price * CFG.sellRate)}</button>` : '');
+      d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)} ×${P.owned[id]}<br>${tag(it)}${inUse(id) ? `<br><span class="mut">使用中 ${inUse(id)}</span>` : ''}</div>` + (P.shop ? `<button>賣 ${Math.floor(it.price * CFG.sellRate)}</button>` : '');
       if (P.shop) d.querySelector('button').onclick = () => send({ t: 'sell', id });
       el.appendChild(d);
     });
+    hydrate(el);
   };
   fill($('#matTray'), Object.keys(P.owned).filter((id) => I(id).kind === 'mat'), '沒有建材，去商店買吧');
   fill($('#wareTray'), Object.keys(P.owned).filter((id) => I(id).kind !== 'mat'), '沒有家具或服飾');
@@ -428,23 +438,25 @@ function renderShop() {
     $('#sBuild').onclick = () => send({ t: 'buildShop' });
     $('#shopBox').classList.add('hidden'); return;
   }
-  $('#shopInfo').innerHTML = `<h3>🏪 商店</h3><p class="mut">建材空間 ${P.matCount}/${P.capacity}　所有商品都沒有等級限制。</p>`;
+  $('#shopInfo').innerHTML = `<h3>🏪 商店</h3><p class="mut">每件商品都有「持有上限」，賣出或用掉（擴建消耗建材）後可再購買。服飾可到「更衣室」試穿。</p>`;
   $('#shopBox').classList.remove('hidden');
   chips($('#shopStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles)], shopStyle, (k) => { shopStyle = k; renderShop(); });
   chips($('#shopCat'), [['all', '全部類別'], ...Object.entries(CAT.cats).map(([k, v]) => [k, v.label])], shopCat, (k) => { shopCat = k; renderShop(); });
   const tray = $('#shopTray'); tray.innerHTML = '';
   Object.values(CAT.items).filter((it) => (shopStyle === 'all' || it.style === shopStyle) && (shopCat === 'all' || it.cat === shopCat)).forEach((it) => {
+    const own = P.owned[it.id] || 0, full = own >= it.limit;
     const d = document.createElement('div'); d.className = 'it';
-    d.innerHTML = `${art(it)}<div class="nm">${esc(it.name)}<br>${tag(it)} <span class="mut">${CAT.cats[it.cat].label}</span></div><div class="pr">💰 ${it.price}</div><button ${P.money < it.price ? 'disabled' : ''}>購買</button>`;
+    d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}<br>${tag(it)} <span class="mut">${CAT.cats[it.cat].label}</span></div><div class="pr">💰 ${it.price}</div><div class="mut">持有 ${own}/${it.limit}</div><button ${full || P.money < it.price ? 'disabled' : ''}>${full ? '已達上限' : '購買'}</button>`;
     d.querySelector('button').onclick = () => send({ t: 'buy', id: it.id });
     tray.appendChild(d);
   });
+  hydrate(tray);
 }
 
 // ───── 問答 ─────
 let qTimer, qEnd = 0, answered = false, curQ = null;
 function renderLobby() {
-  $('#myMul').textContent = P.novice ? `新手：連答 combo +60%（×${CFG.noviceMul}）` : `老手：連答 combo +20%（×${CFG.comboMul}）`;
+  $('#myMul').textContent = P.novice ? `新手（Lv ≤ ${CFG.noviceLevel}）：連答 combo +60%（×${CFG.noviceMul}）` : `老手：連答 combo +20%（×${CFG.comboMul}）`;
   $('#myMul').classList.toggle('vet', !P.novice);
   $('#mulHint').textContent = `等級 ≤ ${CFG.noviceLevel} 為新手，新手可以和任何人對戰，連答時倍率更高。` + (P.styleBonus ? ` 你的房屋風格加成 +${P.styleBonus * 100}% ✨` : '');
   $('#qStat').textContent = `戰績：${P.stats.played} 場 / ${P.stats.wins} 勝　最高連擊 ${P.stats.bestCombo}`;
@@ -508,20 +520,23 @@ const BOARDS = { wins: ['勝場', (r) => r.wins + ' 勝'], combo: ['最高連擊
 function renderBoard() {
   chips($('#boardTabs'), Object.entries(BOARDS).map(([k, v]) => [k, v[0]]), boardTab, (k) => { boardTab = k; renderBoard(); });
   const rows = board ? board[boardTab] : [];
-  $('#boardTbl').innerHTML = '<tr><th>#</th><th>玩家</th><th>房屋</th><th>' + BOARDS[boardTab][0] + '</th></tr>' + (rows.length ? rows.map((r, i) => `<tr class="link" data-pid="${r.pid}"><td>${i + 1}</td><td>${r.gender === 'm' ? '👨' : '👩'} ${esc(r.name)}</td><td>Lv.${r.houseLv}</td><td>${BOARDS[boardTab][1](r)}</td></tr>`).join('') : '<tr><td colspan="4" class="mut">還沒有資料</td></tr>');
+  $('#boardTbl').innerHTML = '<tr><th>#</th><th>玩家</th><th>房屋</th><th>' + BOARDS[boardTab][0] + `</th><th>按讚（對方 +${CFG.likeReward} 元）</th></tr>` +
+    (rows.length ? rows.map((r, i) => `<tr class="link" data-pid="${r.pid}"><td>${i + 1}</td><td>${r.gender === 'm' ? '👨' : '👩'} ${esc(r.name)}${r.self ? '（你）' : ''}</td><td>Lv.${r.houseLv}</td><td>${BOARDS[boardTab][1](r)}</td><td>${r.self ? '' : `<button data-like="${r.pid}" ${r.liked ? 'disabled' : ''}>${r.liked ? '❤️ 已讚' : '👍 讚'}</button>`}　❤️ ${r.likes}</td></tr>`).join('') : '<tr><td colspan="5" class="mut">還沒有資料</td></tr>');
   $('#boardTbl').querySelectorAll('tr.link').forEach((tr) => tr.onclick = () => send({ t: 'visit', pid: tr.dataset.pid }));
+  $('#boardTbl').querySelectorAll('button[data-like]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); send({ t: 'like', pid: b.dataset.like }); });
 }
+let visitStage = null;
 function renderVisit() {
   const box = $('#visitBox');
   if (!visiting) return box.classList.add('hidden');
   const v = visiting; box.classList.remove('hidden');
-  box.innerHTML = `<div class="row"><h3 class="grow">${v.gender === 'm' ? '👨' : '👩'} ${esc(v.name)} 的房子（Lv.${v.houseLv}）</h3><button id="vClose">關閉</button></div>
-    <div class="row" style="align-items:flex-start"><div class="grow" style="min-width:300px"><div class="room" id="vRoom"></div><div class="mut" id="vStyle" style="margin-top:6px"></div></div><div class="avatar">${avatarSVG(v.gender, v.worn)}<div class="mut">Lv.${v.level}</div>
-    <button class="pri" id="vLike" ${v.liked || v.pid === P.pid ? 'disabled' : ''}>${v.liked ? '❤️ 已按讚' : '🤍 按讚'}　${v.likes}</button></div></div>`;
-  drawRoom($('#vRoom'), v, null);
+  if (!visitStage) { visitStage = new HouseView($('#visit3d'), { interactive: false }); visitStage.setItems(CAT.items); }
+  $('#vTitle').textContent = `${v.gender === 'm' ? '👨' : '👩'} ${v.name} 的房子（Lv.${v.houseLv}・${v.cols}×${v.rows} 公尺）`;
+  visitStage.setData({ cols: v.cols, rows: v.rows, house: v.house, worn: v.worn, gender: v.gender });
   $('#vStyle').textContent = styleLine(v);
+  const like = $('#vLike'); like.textContent = (v.liked ? '❤️ 已按讚 ' : `🤍 按讚（對方 +${CFG.likeReward} 元）　`) + v.likes; like.disabled = v.liked || v.pid === P.pid;
+  like.onclick = () => send({ t: 'like', pid: v.pid, visit: 1 });
   $('#vClose').onclick = () => { visiting = null; renderVisit(); };
-  $('#vLike').onclick = () => send({ t: 'like', pid: v.pid });
 }
 
 connect();

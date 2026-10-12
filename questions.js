@@ -254,49 +254,122 @@ const GENERATORS = {
   },
 };
 
-// ── 外部題庫匯入 ──
+// ── 外部題庫匯入（JSON / CSV；沒有選項也沒關係，會自動產生）──
+function parseCSV(text) {
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); cur = ''; if (row.some((x) => x.trim())) rows.push(row); row = []; }
+    else cur += ch;
+  }
+  row.push(cur); if (row.some((x) => x.trim())) rows.push(row);
+  return rows;
+}
 function loadExternal() {
   const dir = path.join(__dirname, 'data', 'questions');
   const out = [];
   try {
     for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith('.json')) continue;
-      const arr = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
-      for (const x of arr) {
-        if (x && x.q && x.a && Array.isArray(x.w) && x.w.length >= 3) {
-          out.push({ id: `ext:${f}:${out.length}`, c: x.c || '綜合', q: x.q, a: x.a, w: x.w.slice(0, 3) });
-        }
+      const full = path.join(dir, f);
+      if (f.endsWith('.json')) {
+        for (const x of JSON.parse(fs.readFileSync(full, 'utf8'))) if (x && x.q && x.a) out.push(mkItem(x.c || '綜合', x.q, x.a, x.w, x.t));
+      } else if (f.endsWith('.csv')) { // 欄位：分類,題目,答案[,錯1,錯2,錯3]；分類可寫成「歷史|人物」
+        for (const r of parseCSV(fs.readFileSync(full, 'utf8'))) { if (r.length >= 3 && r[1].trim() && r[2].trim()) { const [c, t] = r[0].split('|'); out.push(mkItem(c.trim() || '綜合', r[1].trim(), r[2].trim(), r.slice(3).map((v) => v.trim()).filter(Boolean), t && t.trim())); } }
       }
     }
   } catch (e) { /* 沒有外部題庫 */ }
   return out;
 }
 
-const BANK = SEED.map(([c, q, a, ...w], i) => ({ id: 'seed:' + i, c, q, a, w }));
+// ── 把任何「問答題」變成選擇題：自動產生干擾選項 ──
+const hash = (str) => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+function mkItem(cat, q, a, w, t) {
+  let c = cat, tag = t;
+  if (c.includes('|')) [c, tag] = c.split('|');
+  return { id: 'q:' + hash(q), c, t: tag || null, q, a: String(a), w: Array.isArray(w) && w.length ? w.map(String) : null };
+}
+const BANK = [
+  ...SEED.map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
+  ...require('./qbank_open').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
+];
 const EXTERNAL = loadExternal();
+const ALL = [...BANK, ...EXTERNAL];
 
-function bankSize() {
-  return { seed: BANK.length, external: EXTERNAL.length };
+// 干擾選項的候選池：同標籤 > 同分類 > 全部
+const poolTag = new Map(), poolCat = new Map(), poolAll = new Set();
+const addTo = (m, k, v) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(v); };
+for (const it of ALL) for (const v of [it.a, ...(it.w || [])]) { poolAll.add(v); addTo(poolCat, it.c, v); if (it.t) addTo(poolTag, it.t, v); }
+
+const hasNum = (s) => /\d/.test(s);
+const NUM = /-?\d[\d,]*(?:\.\d+)?/g;
+const fmtNum = (n, dec, comma) => { let s = n.toFixed(dec); if (comma) { const [i, d] = s.split('.'); s = i.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (d ? '.' + d : ''); } return s; };
+const niceRound = (n) => { const m = Math.pow(10, Math.max(0, Math.floor(Math.log10(Math.abs(n))) - 1)); return Math.round(n / m) * m; };
+
+// 數字型答案：產生相近的數字（年份、範圍、小數、百分比…皆可）
+function numericDistractors(a) {
+  const toks = a.match(NUM);
+  if (!toks || toks.length > 2) return null;
+  const range = toks.length === 2;
+  if (range && !/[–~－-]/.test(a.replace(toks[0], '').slice(0, a.replace(toks[0], '').indexOf(toks[1]) + 1) + '–')) return null;
+  const vals = toks.map((t) => parseFloat(t.replace(/,/g, '')));
+  const decs = toks.map((t) => (t.split('.')[1] || '').length), comma = toks.map((t) => t.includes(','));
+  const n0 = vals[0], big = Math.max(...vals.map(Math.abs));
+  const isYear = !range && n0 >= 1000 && n0 <= 2100 && /年|^$/.test(a.replace(toks[0], '').trim().slice(0, 1) || '年');
+  let shifts;
+  if (isYear) shifts = [-30, -20, -10, -5, -3, -2, -1, 1, 2, 3, 5, 10, 20];
+  else if (range) { const w = Math.max(vals[1] - vals[0], 1); shifts = [-1.5, -1, -0.5, 0.5, 1, 1.5, 2].map((k) => k * w); }
+  else if (big <= 20 && decs[0] === 0) shifts = [-4, -3, -2, -1, 1, 2, 3, 4, 6];
+  else shifts = [-0.5, -0.25, -0.1, 0.1, 0.25, 0.5, 1].map((k) => k * (decs[0] ? big : niceRound(big)));
+  const out = new Set();
+  for (const sh of shuffle(shifts)) {
+    const nv = vals.map((v) => v + (decs[0] ? sh : Math.round(sh)));
+    if (nv.some((v, i) => (vals[i] >= 0 && v < 0) || (vals[i] > 0 && v === 0))) continue;
+    let i = 0; const s = a.replace(NUM, () => { const k = i++; return fmtNum(nv[k], decs[k], comma[k]); });
+    if (s !== a) out.add(s);
+    if (out.size >= 3) break;
+  }
+  return out.size >= 3 ? [...out] : null;
 }
 
-// 組出一場對戰的 10 題；每題的選項已洗牌，correct 為正解索引
+const BOOL = [['是', '否'], ['否', '是'], ['對', '錯'], ['錯', '對'], ['有', '沒有'], ['沒有', '有']];
+function distractors(item) {
+  if (item.w && item.w.length >= 3) return item.w.slice(0, 3);
+  const a = item.a;
+  const bo = BOOL.find(([x]) => x === a);
+  if (bo) return [bo[1], '不一定', '無法判斷'];
+  if (hasNum(a)) { const nd = numericDistractors(a); if (nd) return nd; }
+  const cands = new Map(); // 候選 → 層級（0=同標籤 1=同分類 2=全部）
+  [item.t && poolTag.get(item.t), poolCat.get(item.c), poolAll].forEach((pool, tier) => {
+    if (!pool || cands.size >= 6) return;
+    for (const v of pool) if (v !== a && hasNum(v) === hasNum(a) && !(item.w || []).includes(v) && !cands.has(v)) cands.set(v, tier);
+  });
+  const last = a.slice(-1);
+  const ranked = [...cands].map(([v, tier]) => ({ v, s: tier * 100 + Math.abs(v.length - a.length) + (v.slice(-1) === last ? -2 : 0) + Math.random() * 3 })).sort((x, y) => x.s - y.s);
+  const got = new Set(item.w || []);
+  for (const { v } of ranked) { if (got.size >= 3) break; got.add(v); }
+  while (got.size < 3) got.add('以上皆非' + '？'.repeat(got.size));
+  return [...got].slice(0, 3);
+}
+
+function bankSize() { return { handwritten: SEED.length, openQA: BANK.length - SEED.length, external: EXTERNAL.length }; }
+
+const GEN_P = 0.25;
 function buildMatchQuestions(n = 10, exclude = new Set()) {
-  const used = new Set(exclude);
-  const list = [];
+  const used = new Set(exclude), list = [];
+  const byCat = new Map(); for (const it of ALL) { if (!byCat.has(it.c)) byCat.set(it.c, []); byCat.get(it.c).push(it); }
+  const cats = [...new Set([...CATEGORIES.filter((c) => c !== '腦筋急轉彎' || byCat.has(c)), ...[...byCat.keys()]])];
   let guard = 0;
-  while (list.length < n && guard++ < 500) {
-    const cat = pick(CATEGORIES);
+  while (list.length < n && guard++ < 800) {
+    const cat = pick(cats);
     let item;
-    const r = Math.random();
-    if (EXTERNAL.length && r < 0.5) item = pick(EXTERNAL);
-    else if (GENERATORS[cat] && r < 0.8) item = GENERATORS[cat]();
-    else {
-      const pool = BANK.filter((b) => b.c === cat);
-      item = pick(pool);
-    }
+    if (GENERATORS[cat] && Math.random() < GEN_P) item = GENERATORS[cat]();
+    else { const pool = byCat.get(cat); if (!pool) continue; item = pool[rnd(pool.length)]; }
     if (used.has(item.id) || used.has('q:' + item.q)) continue;
     used.add(item.id); used.add('q:' + item.q);
-    const opts = shuffle([item.a, ...item.w]);
+    const opts = shuffle([item.a, ...distractors(item)]);
     list.push({ id: item.id, cat: item.c, q: item.q, opts, correct: opts.indexOf(item.a) });
   }
   return list;
