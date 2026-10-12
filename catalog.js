@@ -16,6 +16,7 @@ const CATS = {
   tv: { label: '電視', kind: 'furn' },
   wardrobe: { label: '衣櫃', kind: 'furn' },
   decor: { label: '擺飾', kind: 'furn' },
+  material: { label: '建材', kind: 'mat' },
 };
 
 // [名稱, emoji 或 CSS 背景, 價格]
@@ -92,7 +93,14 @@ const RAW = {
   },
 };
 
+// 建材（放倉庫，用來擴建房屋）：[名稱, emoji, 價格]
+const MATERIALS = [['木材', '🪵', 20], ['磚塊', '🧱', 30], ['水泥', '🪨', 25], ['玻璃', '🪟', 40], ['鋼筋', '⛓️', 60]];
+
 const ITEMS = {};
+MATERIALS.forEach(([name, emoji, price], i) => {
+  const id = 'material_' + ['wood', 'brick', 'cement', 'glass', 'steel'][i];
+  ITEMS[id] = { id, cat: 'material', style: 'none', name, emoji, price, kind: 'mat' };
+});
 for (const cat of Object.keys(RAW)) {
   for (const style of Object.keys(RAW[cat])) {
     RAW[cat][style].forEach(([name, art, price], i) => {
@@ -100,7 +108,6 @@ for (const cat of Object.keys(RAW)) {
       const kind = CATS[cat].kind;
       ITEMS[id] = {
         id, cat, style, name, price, kind,
-        lv: price >= 500 ? 5 : price >= 350 ? 3 : price >= 250 ? 2 : 1, // 解鎖等級
         ...(kind === 'wall' || kind === 'floor' ? { css: art } : { emoji: art }),
       };
     });
