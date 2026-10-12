@@ -268,16 +268,15 @@ function parseCSV(text) {
   row.push(cur); if (row.some((x) => x.trim())) rows.push(row);
   return rows;
 }
-function loadExternal() {
-  const dir = path.join(__dirname, 'data', 'questions');
+function loadDir(dir, src) {
   const out = [];
   try {
     for (const f of fs.readdirSync(dir)) {
       const full = path.join(dir, f);
       if (f.endsWith('.json')) {
-        for (const x of JSON.parse(fs.readFileSync(full, 'utf8'))) if (x && x.q && x.a) out.push(mkItem(x.c || '綜合', x.q, x.a, x.w, x.t));
+        for (const x of JSON.parse(fs.readFileSync(full, 'utf8'))) if (x && x.q && x.a) out.push(mkItem(x.c || '綜合', x.q, x.a, x.w, x.t, src));
       } else if (f.endsWith('.csv')) { // 欄位：分類,題目,答案[,錯1,錯2,錯3]；分類可寫成「歷史|人物」
-        for (const r of parseCSV(fs.readFileSync(full, 'utf8'))) { if (r.length >= 3 && r[1].trim() && r[2].trim()) { const [c, t] = r[0].split('|'); out.push(mkItem(c.trim() || '綜合', r[1].trim(), r[2].trim(), r.slice(3).map((v) => v.trim()).filter(Boolean), t && t.trim())); } }
+        for (const r of parseCSV(fs.readFileSync(full, 'utf8'))) { if (r.length >= 3 && r[1].trim() && r[2].trim()) { const [c, t] = r[0].split('|'); out.push(mkItem(c.trim() || '綜合', r[1].trim(), r[2].trim(), r.slice(3).map((v) => v.trim()).filter(Boolean), t && t.trim(), src)); } }
       }
     }
   } catch (e) { /* 沒有外部題庫 */ }
@@ -286,16 +285,19 @@ function loadExternal() {
 
 // ── 把任何「問答題」變成選擇題：自動產生干擾選項 ──
 const hash = (str) => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
-function mkItem(cat, q, a, w, t) {
+function mkItem(cat, q, a, w, t, src = '手寫') {
   let c = cat, tag = t;
   if (c.includes('|')) [c, tag] = c.split('|');
-  return { id: 'q:' + hash(q), c, t: tag || null, q, a: String(a), w: Array.isArray(w) && w.length ? w.map(String) : null };
+  return { id: 'q:' + hash(q), c, t: tag || null, q, a: String(a), w: Array.isArray(w) && w.length ? w.map(String) : null, src };
 }
 const BANK = [
   ...SEED.map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...require('./qbank_open').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
+  ...require('./qbank_more').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
+  ...require('./qbank_vocab').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
+  ...loadDir(path.join(__dirname, 'qdata'), '程式生成'),
 ];
-const EXTERNAL = loadExternal();
+const EXTERNAL = loadDir(path.join(__dirname, 'data', 'questions'), '外部匯入');
 const ALL = [...BANK, ...EXTERNAL];
 
 // 干擾選項的候選池：同標籤 > 同分類 > 全部
@@ -354,7 +356,15 @@ function distractors(item) {
   return [...got].slice(0, 3);
 }
 
-function bankSize() { return { handwritten: SEED.length, openQA: BANK.length - SEED.length, external: EXTERNAL.length }; }
+function bankSize() { const r = { total: ALL.length }; for (const it of ALL) r[it.src] = (r[it.src] || 0) + 1; return r; }
+
+const { funnyFor } = require('./funny');
+// 搞笑選項比例：每個「錯誤選項」有這個機率被換成搞笑選項（0=不搞笑，1=全部搞笑）
+const FUNNY_RATE = process.env.FUNNY_RATE !== undefined ? Number(process.env.FUNNY_RATE) : 0.6;
+function wrongOptions(item) {
+  const wrong = distractors(item), taken = new Set([item.a, ...wrong]);
+  return wrong.map((w) => { if (Math.random() >= FUNNY_RATE) return w; const f = funnyFor(item, taken); if (f) taken.add(f); return f || w; });
+}
 
 const GEN_P = 0.25;
 function buildMatchQuestions(n = 10, exclude = new Set()) {
@@ -369,10 +379,10 @@ function buildMatchQuestions(n = 10, exclude = new Set()) {
     else { const pool = byCat.get(cat); if (!pool) continue; item = pool[rnd(pool.length)]; }
     if (used.has(item.id) || used.has('q:' + item.q)) continue;
     used.add(item.id); used.add('q:' + item.q);
-    const opts = shuffle([item.a, ...distractors(item)]);
+    const opts = shuffle([item.a, ...wrongOptions(item)]);
     list.push({ id: item.id, cat: item.c, q: item.q, opts, correct: opts.indexOf(item.a) });
   }
   return list;
 }
 
-module.exports = { buildMatchQuestions, bankSize, CATEGORIES };
+module.exports = { buildMatchQuestions, bankSize, CATEGORIES, allItems: () => ALL.map((x) => ({ ...x })) };

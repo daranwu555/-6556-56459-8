@@ -66,8 +66,9 @@ class Stage {
 // ───── 角色 ─────
 export async function buildAvatar(gender, worn, items) {
   const g = new THREE.Group();
-  const urls = [`/models/body_${gender}.glb`];
   const w = worn || {};
+  const urls = [`/models/body_${gender}.glb`, `/models/hair_${gender}.glb`];
+  if (!w.head) urls.push(`/models/hairtop_${gender}.glb`); // 戴頭飾時隱藏髮髻
   if (w.suit && items[w.suit]) urls.push('/' + items[w.suit].model);
   else for (const k of ['top', 'bottom']) if (w[k] && items[w[k]]) urls.push('/' + items[w[k]].model);
   for (const k of ['shoes', 'head']) if (w[k] && items[w[k]]) urls.push('/' + items[w[k]].model);

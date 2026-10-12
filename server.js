@@ -19,9 +19,10 @@ const CFG = {
   codeWaitMs: 120000,        // 邀請碼房間等待時間
   baseMoney: 10,             // 答對一題基本金額
   comboMul: 1.2,             // 老手連答倍率（+20%）
-  noviceMul: 1.6,            // 新手連答倍率（+60%）
+  noviceMul: 1.6,            // 新手「遇到老手」時的連答倍率（+60%）；雙方都是新手或對電腦則維持 comboMul
   noviceLevel: 15,           // 等級 <= 此值視為新手
-  likeReward: 5,             // 被按讚的玩家獲得的金額
+  likeReward: 5,             // 按讚的人獲得的金額
+  likeDailyCap: 20,          // 每人每天最多領幾次按讚獎勵（防止開小帳號洗錢）
   expPerQuestion: 10,
   comboBonus: { 5: { money: 20, exp: 10 }, 8: { money: 50, exp: 30 }, 10: { money: 100, exp: 50 } },
   firstLevelExp: 200,
@@ -30,6 +31,7 @@ const CFG = {
   warehouse: { base: 50, upgradeCap: 5, upgradeBase: 150 }, // 倉庫放建材
   shopBuild: 300,
   sellRate: 0.35,
+  renameCost: 100000,        // 改名費用（取名免費，改名要錢）
   // 房屋等級：cols × rows 為房間大小（公尺）；第 n 項 = 擴建到等級 n+1 的條件
   houseLevels: [
     { cols: 6, rows: 4 },
@@ -61,7 +63,8 @@ const dirty = new Set(), dirtyQ = new Set();
 
 for (const r of db.prepare('SELECT username, profile FROM accounts').all()) {
   const p = JSON.parse(r.profile);
-  if (p.house.placed.some((x) => !Number.isFinite(x.z))) p.house.placed = []; // 舊版格子資料 players.set(r.username, p); byToken.set(p.token, p); byPid.set(p.pid, p);
+  if (p.house.placed.some((x) => !Number.isFinite(x.z))) p.house.placed = []; // 舊版格子資料
+  players.set(r.username, p); byToken.set(p.token, p); byPid.set(p.pid, p);
 }
 for (const r of db.prepare('SELECT id, n, c FROM qstats').all()) qstats.set(r.id, { n: r.n, c: r.c });
 
@@ -84,8 +87,9 @@ function newProfile(username, password, name, gender) {
     username, passSalt: salt, passHash: hashPw(password, salt),
     token: crypto.randomBytes(16).toString('hex'), pid: crypto.randomBytes(5).toString('hex'),
     name, gender,
-    money: CFG.startMoney, exp: 0, level: 1,
-    owned: {}, worn: {},
+    money: CFG.startMoney, exp: 0, level: Number(process.env.START_LEVEL) || 1,
+    owned: { [`suit_start_${gender}`]: 1, [`shoes_start_${gender}`]: 1 }, // 初始服裝
+    worn: { suit: `suit_start_${gender}`, shoes: `shoes_start_${gender}` },
     houseLv: 1, house: { wall: null, carpet: null, placed: [] },
     shop: false, warehouseLv: 0,
     likes: 0, likedBy: [], seen: [], lastSeen: Date.now(),
@@ -168,12 +172,15 @@ function startRoom(entries) {
       return {
         sess: e.sess || null, bot: !!e.bot, acc: e.acc,
         name: p ? p.name : e.name, gender: p ? p.gender : e.gender, level: p ? p.level : 99,
-        mul: p ? (isNovice(p) ? CFG.noviceMul : CFG.comboMul) : CFG.comboMul,
+        mul: CFG.comboMul,
         styleBonus: p ? styleBonusOf(p) : 0,
         choice: null, correct: 0, streak: 0, chain: 0, bank: 0, bestStreak: 0, exp: 0,
       };
     }),
   };
+  // 新手遇到老手（雙方都是真人）時，新手連答倍率才提高為 noviceMul；其餘一律 comboMul
+  const [a0, a1] = room.pl;
+  if (a0.sess && a1.sess) { const n0 = isNovice(a0.sess.p), n1 = isNovice(a1.sess.p); if (n0 && !n1) a0.mul = CFG.noviceMul; if (n1 && !n0) a1.mul = CFG.noviceMul; }
   room.pl.forEach((pl, i) => {
     if (!pl.sess) return;
     pl.sess.room = room;
@@ -325,7 +332,7 @@ function handle(sess, m) {
     case 'buy': {
       if (!p.shop) return err('請先建造商店');
       const it = ITEMS[m.id];
-      if (!it) return err('沒有這個商品');
+      if (!it || it.starter) return err('沒有這個商品');
       if ((p.owned[it.id] || 0) >= it.limit) return err(`「${it.name}」最多只能持有 ${it.limit} 件（已達上限）`);
       if (p.money < it.price) return err('金錢不足');
       if (it.kind === 'mat' && matCount(p) >= capacity(p)) return err('倉庫已滿，請先升級倉庫或賣出建材');
@@ -335,6 +342,7 @@ function handle(sess, m) {
     case 'sell': {
       if (!p.shop) return err('請先建造商店');
       const it = ITEMS[m.id];
+      if (it && it.starter) return err('初始服裝不能賣出');
       const free = it ? (p.owned[it.id] || 0) - placedCount(p, it.id) - wornCount(p, it.id) - (p.house.wall === it.id ? 1 : 0) - (p.house.carpet === it.id ? 1 : 0) : 0;
       if (free <= 0) return err('此物品使用中或不存在，請先取下');
       p.owned[it.id]--; if (!p.owned[it.id]) delete p.owned[it.id];
@@ -370,6 +378,13 @@ function handle(sess, m) {
       } else delete p.worn[m.slot];
       return ok();
     }
+    case 'rename': {
+      const name = String(m.name || '').trim().slice(0, 12);
+      if (!name) return err('請輸入名字');
+      if (name === p.name) return err('名字沒有變');
+      if (p.money < CFG.renameCost) return err(`改名需要 ${CFG.renameCost.toLocaleString()} 元`);
+      p.money -= CFG.renameCost; p.name = name; send(sess, { t: 'toast', msg: `已改名為「${name}」` }); return ok();
+    }
     case 'board': return send(sess, { t: 'board', ...boardData(p) });
     case 'visit': {
       const t = byPid.get(String(m.pid));
@@ -380,10 +395,15 @@ function handle(sess, m) {
       const t = byPid.get(String(m.pid));
       if (!t || t === p) return err('無法按讚');
       if (t.likedBy.includes(p.username)) return err('你已經按過讚了');
-      t.likedBy.push(p.username); t.likes++; t.money += CFG.likeReward; touch(t);
-      send(sess, { t: 'likeOk', pid: t.pid, likes: t.likes });
+      t.likedBy.push(p.username); t.likes++; touch(t);
+      const day = new Date().toISOString().slice(0, 10);
+      if (!p.likeDay || p.likeDay.d !== day) p.likeDay = { d: day, n: 0 };
+      let reward = 0;
+      if (p.likeDay.n < CFG.likeDailyCap) { p.likeDay.n++; reward = CFG.likeReward; p.money += reward; }
+      touch(p); pushProfile(sess);
+      send(sess, { t: 'likeOk', pid: t.pid, likes: t.likes, reward, left: CFG.likeDailyCap - p.likeDay.n });
       if (m.visit) send(sess, { t: 'visit', v: visitView(t, p) });
-      sessions.forEach((s) => { if (s.p === t) { pushProfile(s); send(s, { t: 'toast', msg: `❤️ ${p.name} 幫你的房子按讚，獲得 ${CFG.likeReward} 元！` }); } });
+      sessions.forEach((s) => { if (s.p === t) { pushProfile(s); send(s, { t: 'toast', msg: `❤️ ${p.name} 幫你的房子按讚！` }); } });
       return;
     }
   }
@@ -415,7 +435,7 @@ function auth(sess, m) {
   send(sess, {
     t: 'welcome', token: p.token, p: publicProfile(p),
     catalog: { items: ITEMS, cats: CATS, styles: STYLES },
-    cfg: { entryFee: CFG.entryFee, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, noviceLevel: CFG.noviceLevel, likeReward: CFG.likeReward, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
+    cfg: { entryFee: CFG.entryFee, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, renameCost: CFG.renameCost, noviceLevel: CFG.noviceLevel, likeReward: CFG.likeReward, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
   });
   broadcastOnline();
 }

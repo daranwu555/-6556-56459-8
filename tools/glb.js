@@ -68,6 +68,33 @@ function torus(R, r, ws = 28, hs = 10) {
   return g;
 }
 
+// 旋轉體（車削）：profile 為 [[半徑, y], ...]，由下往上；法線用相鄰面平均（平滑）
+function smoothNormals(pos, idx) {
+  const n = new Array(pos.length).fill(0);
+  for (let t = 0; t < idx.length; t += 3) {
+    const [a, b, c] = [idx[t] * 3, idx[t + 1] * 3, idx[t + 2] * 3];
+    const u = [pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]], v = [pos[c] - pos[a], pos[c + 1] - pos[a + 1], pos[c + 2] - pos[a + 2]];
+    const f = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    for (const i of [a, b, c]) { n[i] += f[0]; n[i + 1] += f[1]; n[i + 2] += f[2]; }
+  }
+  for (let i = 0; i < n.length; i += 3) { const l = Math.hypot(n[i], n[i + 1], n[i + 2]) || 1; n[i] /= l; n[i + 1] /= l; n[i + 2] /= l; }
+  return n;
+}
+function lathe(profile, seg = 24, cap = true) {
+  const pos = [], idx = [], n = profile.length;
+  for (let j = 0; j < n; j++) for (let i = 0; i < seg; i++) { const th = (i / seg) * Math.PI * 2; pos.push(profile[j][0] * Math.cos(th), profile[j][1], profile[j][0] * Math.sin(th)); }
+  for (let j = 0; j < n - 1; j++) for (let i = 0; i < seg; i++) {
+    const a = j * seg + i, b = j * seg + ((i + 1) % seg), c = (j + 1) * seg + i, d = (j + 1) * seg + ((i + 1) % seg);
+    idx.push(b, a, c, b, c, d);
+  }
+  if (cap) for (const [j, up] of [[0, false], [n - 1, true]]) {
+    if (profile[j][0] <= 1e-6) continue;
+    const c0 = pos.length / 3; pos.push(0, profile[j][1], 0);
+    for (let i = 0; i < seg; i++) { const r0 = j * seg + i, r1 = j * seg + ((i + 1) % seg); up ? idx.push(c0, r1, r0) : idx.push(c0, r0, r1); }
+  }
+  return { pos, nor: smoothNormals(pos, idx), idx };
+}
+
 // ── 轉換：縮放 → 旋轉(XYZ) → 平移 ──
 function xform(g, t) {
   const s = t.s || [1, 1, 1], r = t.r || [0, 0, 0], p = t.p || [0, 0, 0];
@@ -161,4 +188,4 @@ function png(file, size, fn) {
 }
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 
-module.exports = { Model, box, cyl, sphere, torus, png, hexRgb };
+module.exports = { Model, box, cyl, sphere, torus, lathe, png, hexRgb };

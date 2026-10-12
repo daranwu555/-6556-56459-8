@@ -146,6 +146,7 @@ tr.link{cursor:pointer}tr.link:hover{background:#0003}
           <div class="chips" id="dressStyle"></div>
           <div class="tray" id="dressTray"></div>
           <p class="mut" id="dressNote"></p>
+          <div class="card" style="margin:10px 0 0"><b>✏️ 角色名字</b><div class="row" style="margin-top:6px"><input id="newName" maxlength="12" style="width:180px;margin:0"><button id="renameBtn"></button></div><div class="mut" id="renameHint"></div></div>
         </div>
       </div>
     </div>
@@ -255,7 +256,7 @@ function onMsg(m) {
     case 'reveal': showReveal(m); break;
     case 'end': showEnd(m); break;
     case 'board': board = m; renderBoard(); break;
-    case 'likeOk': toast(`👍 已按讚，對方獲得 ${CFG.likeReward} 元！`); send({ t: 'board' }); break;
+    case 'likeOk': toast(m.reward ? `👍 已按讚，你獲得 ${m.reward} 元！（今日還可領 ${m.left} 次）` : '👍 已按讚（今日按讚獎勵已領滿）'); send({ t: 'board' }); break;
     case 'visit': visiting = m.v; renderVisit(); break;
   }
 }
@@ -279,7 +280,7 @@ function renderAll() {
   $('#sName').textContent = (P.gender === 'm' ? '👨 ' : '👩 ') + P.name;
   $('#sMoney').textContent = P.money.toLocaleString();
   $('#sLv').textContent = P.level;
-  $('#sNovice').textContent = P.novice ? '新手 combo+60%' : '老手 combo+20%';
+  $('#sNovice').textContent = P.novice ? '新手' : '老手';
   $('#sNovice').classList.toggle('vet', !P.novice);
   $('#expBar').style.width = Math.min(100, (P.exp / P.expNeed) * 100) + '%';
   $('#expTxt').textContent = `經驗 ${P.exp} / ${P.expNeed}（升到 Lv.${P.level + 1}）`;
@@ -393,7 +394,7 @@ function renderDress() {
   chips($('#dressSlots'), SLOTS.map((k) => [k, CAT.cats[k].label]), dressSlot, (k) => { dressSlot = k; renderDress(); });
   chips($('#dressStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles)], dressStyle, (k) => { dressStyle = k; renderDress(); });
   const tray = $('#dressTray'); tray.innerHTML = '';
-  Object.values(CAT.items).filter((it) => it.cat === dressSlot && (dressStyle === 'all' || it.style === dressStyle)).forEach((it) => {
+  Object.values(CAT.items).filter((it) => it.cat === dressSlot && (!it.starter || it.gender === P.gender) && (dressStyle === 'all' || it.style === dressStyle || it.starter)).forEach((it) => {
     const own = P.owned[it.id] || 0, worn = P.worn[it.cat] === it.id, trying = tryOn[it.cat] === it.id;
     const d = document.createElement('div'); d.className = 'it' + (trying || (worn && !tryOn[it.cat]) ? ' sel' : '');
     d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}<br>${tag(it)}</div>` +
@@ -406,6 +407,8 @@ function renderDress() {
     tray.appendChild(d);
   });
   hydrate(tray);
+  $('#newName').value = $('#newName').value || P.name; $('#renameBtn').textContent = `改名（${CFG.renameCost.toLocaleString()} 元）`; $('#renameBtn').disabled = P.money < CFG.renameCost; $('#renameHint').textContent = `註冊時取名免費，之後改名需要 ${CFG.renameCost.toLocaleString()} 元。`;
+  $('#renameBtn').onclick = () => send({ t: 'rename', name: $('#newName').value });
   $('#dressNote').textContent = (Object.keys(tryOn).length ? '👀 目前是試穿畫面（未購買的衣服不會被保存）。' : '') + (P.shop ? '' : ' 蓋好商店後才能購買服飾。') + ' 穿套裝時，會覆蓋上衣和下裝。';
 }
 
@@ -421,8 +424,8 @@ function renderWare() {
     if (!ids.length) el.innerHTML = `<span class="mut">${empty}</span>`;
     ids.forEach((id) => {
       const it = I(id), d = document.createElement('div'); d.className = 'it';
-      d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)} ×${P.owned[id]}<br>${tag(it)}${inUse(id) ? `<br><span class="mut">使用中 ${inUse(id)}</span>` : ''}</div>` + (P.shop ? `<button>賣 ${Math.floor(it.price * CFG.sellRate)}</button>` : '');
-      if (P.shop) d.querySelector('button').onclick = () => send({ t: 'sell', id });
+      d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)} ×${P.owned[id]}<br>${tag(it)}${inUse(id) ? `<br><span class="mut">使用中 ${inUse(id)}</span>` : ''}</div>` + (P.shop && !it.starter ? `<button>賣 ${Math.floor(it.price * CFG.sellRate)}</button>` : '');
+      if (P.shop && !it.starter) d.querySelector('button').onclick = () => send({ t: 'sell', id });
       el.appendChild(d);
     });
     hydrate(el);
@@ -443,7 +446,7 @@ function renderShop() {
   chips($('#shopStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles)], shopStyle, (k) => { shopStyle = k; renderShop(); });
   chips($('#shopCat'), [['all', '全部類別'], ...Object.entries(CAT.cats).map(([k, v]) => [k, v.label])], shopCat, (k) => { shopCat = k; renderShop(); });
   const tray = $('#shopTray'); tray.innerHTML = '';
-  Object.values(CAT.items).filter((it) => (shopStyle === 'all' || it.style === shopStyle) && (shopCat === 'all' || it.cat === shopCat)).forEach((it) => {
+  Object.values(CAT.items).filter((it) => !it.starter && (shopStyle === 'all' || it.style === shopStyle) && (shopCat === 'all' || it.cat === shopCat)).forEach((it) => {
     const own = P.owned[it.id] || 0, full = own >= it.limit;
     const d = document.createElement('div'); d.className = 'it';
     d.innerHTML = `${thumbImg(it)}<div class="nm">${esc(it.name)}<br>${tag(it)} <span class="mut">${CAT.cats[it.cat].label}</span></div><div class="pr">💰 ${it.price}</div><div class="mut">持有 ${own}/${it.limit}</div><button ${full || P.money < it.price ? 'disabled' : ''}>${full ? '已達上限' : '購買'}</button>`;
@@ -456,9 +459,9 @@ function renderShop() {
 // ───── 問答 ─────
 let qTimer, qEnd = 0, answered = false, curQ = null;
 function renderLobby() {
-  $('#myMul').textContent = P.novice ? `新手（Lv ≤ ${CFG.noviceLevel}）：連答 combo +60%（×${CFG.noviceMul}）` : `老手：連答 combo +20%（×${CFG.comboMul}）`;
+  $('#myMul').textContent = P.novice ? `新手（Lv ≤ ${CFG.noviceLevel}）：連答 combo 平常 +20%，遇到老手時 +60%（×${CFG.noviceMul}）` : `老手：連答 combo +20%（×${CFG.comboMul}）`;
   $('#myMul').classList.toggle('vet', !P.novice);
-  $('#mulHint').textContent = `等級 ≤ ${CFG.noviceLevel} 為新手，新手可以和任何人對戰，連答時倍率更高。` + (P.styleBonus ? ` 你的房屋風格加成 +${P.styleBonus * 100}% ✨` : '');
+  $('#mulHint').textContent = `等級 ≤ ${CFG.noviceLevel} 為新手，新手可以和任何人對戰；只有「新手遇到老手」時，新手的連答倍率才會提高。對戰電腦或雙方都是新手，一律 ×1.2。` + (P.styleBonus ? ` 你的房屋風格加成 +${P.styleBonus * 100}% ✨` : '');
   $('#qStat').textContent = `戰績：${P.stats.played} 場 / ${P.stats.wins} 勝　最高連擊 ${P.stats.bestCombo}`;
 }
 function showQuiz(which) { ['Lobby', 'Wait', 'Play', 'End'].forEach((n) => $('#quiz' + n).classList.toggle('hidden', n.toLowerCase() !== which)); }
@@ -520,7 +523,7 @@ const BOARDS = { wins: ['勝場', (r) => r.wins + ' 勝'], combo: ['最高連擊
 function renderBoard() {
   chips($('#boardTabs'), Object.entries(BOARDS).map(([k, v]) => [k, v[0]]), boardTab, (k) => { boardTab = k; renderBoard(); });
   const rows = board ? board[boardTab] : [];
-  $('#boardTbl').innerHTML = '<tr><th>#</th><th>玩家</th><th>房屋</th><th>' + BOARDS[boardTab][0] + `</th><th>按讚（對方 +${CFG.likeReward} 元）</th></tr>` +
+  $('#boardTbl').innerHTML = '<tr><th>#</th><th>玩家</th><th>房屋</th><th>' + BOARDS[boardTab][0] + `</th><th>按讚（你 +${CFG.likeReward} 元）</th></tr>` +
     (rows.length ? rows.map((r, i) => `<tr class="link" data-pid="${r.pid}"><td>${i + 1}</td><td>${r.gender === 'm' ? '👨' : '👩'} ${esc(r.name)}${r.self ? '（你）' : ''}</td><td>Lv.${r.houseLv}</td><td>${BOARDS[boardTab][1](r)}</td><td>${r.self ? '' : `<button data-like="${r.pid}" ${r.liked ? 'disabled' : ''}>${r.liked ? '❤️ 已讚' : '👍 讚'}</button>`}　❤️ ${r.likes}</td></tr>`).join('') : '<tr><td colspan="5" class="mut">還沒有資料</td></tr>');
   $('#boardTbl').querySelectorAll('tr.link').forEach((tr) => tr.onclick = () => send({ t: 'visit', pid: tr.dataset.pid }));
   $('#boardTbl').querySelectorAll('button[data-like]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); send({ t: 'like', pid: b.dataset.like }); });
@@ -534,7 +537,7 @@ function renderVisit() {
   $('#vTitle').textContent = `${v.gender === 'm' ? '👨' : '👩'} ${v.name} 的房子（Lv.${v.houseLv}・${v.cols}×${v.rows} 公尺）`;
   visitStage.setData({ cols: v.cols, rows: v.rows, house: v.house, worn: v.worn, gender: v.gender });
   $('#vStyle').textContent = styleLine(v);
-  const like = $('#vLike'); like.textContent = (v.liked ? '❤️ 已按讚 ' : `🤍 按讚（對方 +${CFG.likeReward} 元）　`) + v.likes; like.disabled = v.liked || v.pid === P.pid;
+  const like = $('#vLike'); like.textContent = (v.liked ? '❤️ 已按讚 ' : `🤍 按讚（你 +${CFG.likeReward} 元）　`) + v.likes; like.disabled = v.liked || v.pid === P.pid;
   like.onclick = () => send({ t: 'like', pid: v.pid, visit: 1 });
   $('#vClose').onclick = () => { visiting = null; renderVisit(); };
 }

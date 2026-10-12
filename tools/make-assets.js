@@ -2,6 +2,7 @@
 // 執行：node tools/make-assets.js
 const path = require('path');
 const { Model, box, cyl, sphere, torus, png, hexRgb } = require('./glb');
+const CH = require('./character');
 const OUT = path.join(__dirname, '..', 'public');
 const PI = Math.PI;
 
@@ -174,26 +175,6 @@ W.suit_cute_1 = (m, p) => { const b = '#a8743f'; torso(m, b, matte); pants(m, b,
 W.suit_fun_0 = (m, p) => { const g = '#3fae55'; torso(m, g, matte); pants(m, g, matte); sp(m, g, 0.15, 0.15, 0.15, 0, 1.6, -0.035, matte); bx(m, g, 0.14, 0.07, 0.1, 0, 1.58, 0.12, 0, matte); for (const s of [-1, 1]) { sp(m, '#fff', 0.025, 0.025, 0.02, s * 0.07, 1.68, 0.08, matte); sp(m, '#111', 0.012, 0.012, 0.01, s * 0.07, 1.68, 0.1, matte); } for (let i = 0; i < 5; i++) cy(m, p.acc, 0, 0.04, 0.09, 0, 1.4 - i * 0.12, -0.14 - (i === 0 ? 0 : 0), [-0.5, 0, 0], matte, 4); cy(m, g, 0, 0.09, 0.5, 0, 0.7, -0.35, [-1.2, 0, 0], matte, 10); };
 W.suit_fun_1 = (m, p) => { torso(m, '#fff', matte); pants(m, '#fff', matte); sp(m, '#fff', 0.15, 0.15, 0.15, 0, 1.6, -0.035, matte); cy(m, '#ffd93d', 0, 0.025, 0.2, 0, 1.73, 0.06, [0.2, 0, 0], shiny, 10); for (const s of [-1, 1]) cy(m, '#fff', 0, 0.04, 0.1, s * 0.09, 1.73, -0.02, [0, 0, -s * 0.3], matte, 6); RAINBOW.forEach((c, i) => { sp(m, c, 0.045, 0.045, 0.045, 0, 1.68 - i * 0.1, -0.14, matte); }); RAINBOW.forEach((c, i) => sp(m, c, 0.06, 0.06, 0.06, 0, 0.9 - i * 0.04, -0.2 - i * 0.04, matte)); };
 
-// ═════════ 角色本體 ═════════
-function body(gender) {
-  const m = new Model();
-  const skin = { m: 0, r: 0.8 };
-  cy(m, SKIN, 0.075, 0.062, 0.8, -0.095, 0.07, 0, 0, skin, 14); cy(m, SKIN, 0.075, 0.062, 0.8, 0.095, 0.07, 0, 0, skin, 14);
-  for (const s of [-1, 1]) bx(m, SKIN, 0.1, 0.07, 0.2, s * 0.095, 0, 0.04, 0, skin);
-  m.add(cyl(0.17, 0.15, 0.6, 20), m.mat('#e8e8ee', matte), { p: [0, 1.15, 0], s: [1, 1, 0.62] }); // 內衣（避免穿模露空）
-  for (const s of [-1, 1]) { sp(m, SKIN, 0.06, 0.06, 0.06, s * 0.2, 1.4, 0, skin); m.add(cyl(0.05, 0.045, 0.45, 12), m.mat(SKIN, skin), { p: [s * 0.24, 1.17, 0], r: [0, 0, s * 0.08] }); sp(m, SKIN, 0.045, 0.045, 0.045, s * 0.265, 0.93, 0, skin); }
-  m.add(cyl(0.16, 0.17, 0.12, 20), m.mat('#5a6180', matte), { p: [0, 0.87, 0], s: [1, 1, 0.62] }); // 內褲
-  cy(m, SKIN, 0.05, 0.055, 0.1, 0, 1.43, 0, 0, skin, 12);
-  sp(m, SKIN, 0.115, 0.13, 0.12, 0, 1.58, 0, skin);
-  for (const s of [-1, 1]) { sp(m, '#fff', 0.02, 0.025, 0.012, s * 0.045, 1.595, 0.112); sp(m, '#1a1a22', 0.012, 0.016, 0.01, s * 0.045, 1.595, 0.12); bx(m, gender === 'f' ? '#3a2418' : '#3a2418', 0.04, 0.006, 0.006, s * 0.045, 1.625, 0.115); }
-  bx(m, gender === 'f' ? '#c8566b' : '#b5605a', 0.04, 0.008, 0.008, 0, 1.53, 0.118);
-  const hair = gender === 'f' ? '#6b3e26' : '#2f2118';
-  sp(m, hair, 0.125, 0.1, 0.13, 0, 1.64, -0.01, matte);
-  if (gender === 'f') { bx(m, hair, 0.27, 0.42, 0.07, 0, 1.2, -0.1, 0, matte); for (const s of [-1, 1]) bx(m, hair, 0.04, 0.3, 0.1, s * 0.12, 1.34, -0.02, 0, matte); }
-  else bx(m, hair, 0.22, 0.05, 0.05, 0, 1.64, 0.1, 0, matte);
-  return m;
-}
-
 // ═════════ 材質 PNG（牆壁、地毯）═════════
 const rnd = (x, y, s = 0) => { const n = Math.sin(x * 12.9898 + y * 78.233 + s) * 43758.5453; return n - Math.floor(n); };
 const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
@@ -218,7 +199,11 @@ function run() {
   for (const [id, fn] of Object.entries(F)) { const style = id.split('_')[1]; const m = new Model(); fn(m, PAL[style]); m.save(path.join(OUT, 'models/furniture', id + '.glb')); n++; }
   for (const [id, fn] of Object.entries(W)) { const style = id.split('_')[1]; const m = new Model(); fn(m, PAL[style]); m.save(path.join(OUT, 'models/wear', id + '.glb')); n++; }
   for (const [id, fn] of Object.entries(MAT)) { const m = new Model(); fn(m); m.save(path.join(OUT, 'models/material', id + '.glb')); n++; }
-  body('m').save(path.join(OUT, 'models/body_m.glb')); body('f').save(path.join(OUT, 'models/body_f.glb')); n += 2;
+  for (const g of ['m', 'f']) {
+    CH.body(g).save(path.join(OUT, `models/body_${g}.glb`)); CH.hairBase(g).save(path.join(OUT, `models/hair_${g}.glb`)); CH.hairTop(g).save(path.join(OUT, `models/hairtop_${g}.glb`)); n += 3;
+  }
+  CH.robeM().save(path.join(OUT, 'models/wear/suit_start_m.glb')); CH.robeF().save(path.join(OUT, 'models/wear/suit_start_f.glb'));
+  CH.bootsM().save(path.join(OUT, 'models/wear/shoes_start_m.glb')); CH.shoesF().save(path.join(OUT, 'models/wear/shoes_start_f.glb')); n += 4;
   for (const [id, fn] of Object.entries(TEX)) { png(path.join(OUT, 'textures', id + '.png'), 128, fn); n++; }
   console.log('產生檔案數：', n);
 }

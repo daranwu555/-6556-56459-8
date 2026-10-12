@@ -122,4 +122,10 @@ for (const cat of Object.keys(RAW)) {
   }
 }
 
+// 初始服裝（註冊時免費配發，不在商店販售）
+for (const [g, name] of [['m', '武俠長袍'], ['f', '襦裙']]) {
+  ITEMS[`suit_start_${g}`] = { id: `suit_start_${g}`, cat: 'suit', style: 'none', name: `初始・${name}`, price: 0, kind: 'wear', limit: 1, starter: true, gender: g, model: `models/wear/suit_start_${g}.glb`, emoji: '👘' };
+  ITEMS[`shoes_start_${g}`] = { id: `shoes_start_${g}`, cat: 'shoes', style: 'none', name: g === 'm' ? '初始・武俠布靴' : '初始・繡花布鞋', price: 0, kind: 'wear', limit: 1, starter: true, gender: g, model: `models/wear/shoes_start_${g}.glb`, emoji: '🥾' };
+}
+
 module.exports = { STYLES, CATS, ITEMS };
