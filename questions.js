@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const CATEGORIES = ['地理', '天文', '歷史', '會計', '護理', '科學', '生物', '生活常識', '體育', '文學藝術', '科技', '腦筋急轉彎'];
+const CATEGORIES = ['地理', '天文', '歷史', '會計', '護理', '科學', '生物', '生活常識', '體育', '文學藝術', '科技', '腦筋急轉彎', '哲學'];
 
 // [分類, 題目, 正解, 錯1, 錯2, 錯3]
 const SEED = [
@@ -247,11 +247,6 @@ const GENERATORS = {
     const o = numOptions(rate, 10, (x) => `${x} mL/小時`);
     return { id: `gen:nurse:${vol}:${hours}`, c: '護理', q: `醫囑：輸液 ${vol} mL 於 ${hours} 小時內平均輸注完畢，每小時應輸注多少？`, a: o[0], w: o.slice(1) };
   },
-  腦筋急轉彎: () => {
-    const a = rnd(8) + 12, b = rnd(8) + 3; // 心算
-    const o = numOptions(a * b, pick([1, 10]), (x) => String(x));
-    return { id: `gen:math:${a}x${b}`, c: '數學心算', q: `心算挑戰：${a} × ${b} = ？`, a: o[0], w: o.slice(1) };
-  },
 };
 
 // ── 外部題庫匯入（JSON / CSV；沒有選項也沒關係，會自動產生）──
@@ -295,6 +290,8 @@ const BANK = [
   ...require('./qbank_open').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...require('./qbank_more').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...require('./qbank_vocab').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
+  ...require('./qbank_brain').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
+  ...require('./qbank_phil').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...loadDir(path.join(__dirname, 'qdata'), '程式生成'),
 ];
 const EXTERNAL = loadDir(path.join(__dirname, 'data', 'questions'), '外部匯入');

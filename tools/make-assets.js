@@ -197,13 +197,13 @@ const TEX = {
 function run() {
   let n = 0;
   for (const [id, fn] of Object.entries(F)) { const style = id.split('_')[1]; const m = new Model(); fn(m, PAL[style]); m.save(path.join(OUT, 'models/furniture', id + '.glb')); n++; }
-  for (const [id, fn] of Object.entries(W)) { const style = id.split('_')[1]; const m = new Model(); fn(m, PAL[style]); m.save(path.join(OUT, 'models/wear', id + '.glb')); n++; }
+  for (const [id, fn] of Object.entries(W)) { const style = id.split('_')[1]; const m = new Model(); fn(m, PAL[style]); m.save(path.join(OUT, 'models/wear', id + '.glb'), CH.chibi); n++; }
   for (const [id, fn] of Object.entries(MAT)) { const m = new Model(); fn(m); m.save(path.join(OUT, 'models/material', id + '.glb')); n++; }
   for (const g of ['m', 'f']) {
-    CH.body(g).save(path.join(OUT, `models/body_${g}.glb`)); CH.hairBase(g).save(path.join(OUT, `models/hair_${g}.glb`)); CH.hairTop(g).save(path.join(OUT, `models/hairtop_${g}.glb`)); n += 3;
+    CH.body(g).save(path.join(OUT, `models/body_${g}.glb`), CH.chibi); CH.hairBase(g).save(path.join(OUT, `models/hair_${g}.glb`), CH.chibi); CH.hairTop(g).save(path.join(OUT, `models/hairtop_${g}.glb`), CH.chibi); n += 3;
   }
-  CH.robeM().save(path.join(OUT, 'models/wear/suit_start_m.glb')); CH.robeF().save(path.join(OUT, 'models/wear/suit_start_f.glb'));
-  CH.bootsM().save(path.join(OUT, 'models/wear/shoes_start_m.glb')); CH.shoesF().save(path.join(OUT, 'models/wear/shoes_start_f.glb')); n += 4;
+  for (const [f, fn] of [['suit_start_m', CH.robeM], ['suit_start_f', CH.robeF], ['shoes_start_m', CH.bootsM], ['shoes_start_f', CH.shoesF]]) fn().save(path.join(OUT, `models/wear/${f}.glb`), CH.chibi);
+  n += 4;
   for (const [id, fn] of Object.entries(TEX)) { png(path.join(OUT, 'textures', id + '.png'), 128, fn); n++; }
   console.log('產生檔案數：', n);
 }

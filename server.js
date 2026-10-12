@@ -22,7 +22,7 @@ const CFG = {
   noviceMul: 1.6,            // 新手「遇到老手」時的連答倍率（+60%）；雙方都是新手或對電腦則維持 comboMul
   noviceLevel: 15,           // 等級 <= 此值視為新手
   likeReward: 5,             // 按讚的人獲得的金額
-  likeDailyCap: 20,          // 每人每天最多領幾次按讚獎勵（防止開小帳號洗錢）
+  likeDailyCap: 5,           // 每人每天最多領幾次按讚獎勵（防止開小帳號洗錢）
   expPerQuestion: 10,
   comboBonus: { 5: { money: 20, exp: 10 }, 8: { money: 50, exp: 30 }, 10: { money: 100, exp: 50 } },
   firstLevelExp: 200,

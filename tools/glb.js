@@ -130,11 +130,12 @@ class Model {
     return i;
   }
   add(geo, mat, t = {}) { this.parts.push({ g: xform(geo, t), mat }); return this; }
-  save(file) {
+  save(file, deform) {
     const by = new Map();
-    for (const { g, mat } of this.parts) {
+    for (let { g, mat } of this.parts) {
       if (!by.has(mat)) by.set(mat, { pos: [], nor: [], idx: [] });
       const m = by.get(mat), base = m.pos.length / 3;
+      if (deform) { g = { pos: g.pos.slice(), nor: g.nor.slice(), idx: g.idx }; for (let i = 0; i < g.pos.length; i += 3) { const d = deform(g.pos[i], g.pos[i + 1], g.pos[i + 2]); g.pos[i] = d.p[0]; g.pos[i + 1] = d.p[1]; g.pos[i + 2] = d.p[2]; const n = [g.nor[i] / d.s[0], g.nor[i + 1] / d.s[1], g.nor[i + 2] / d.s[2]], l = Math.hypot(...n) || 1; g.nor[i] = n[0] / l; g.nor[i + 1] = n[1] / l; g.nor[i + 2] = n[2] / l; } }
       m.pos.push(...g.pos); m.nor.push(...g.nor); for (const i of g.idx) m.idx.push(i + base);
     }
     const bufs = [], accessors = [], views = [], meshes = [], nodes = [], matsOut = [];

@@ -19,7 +19,7 @@ function texture(url, rx, ry) {
 }
 
 function addLights(scene, shadows) {
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7f78, 1.15));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7f78, 1.45));
   const d = new THREE.DirectionalLight(0xfff4e0, 1.6);
   d.position.set(6, 11, 7);
   if (shadows) { d.castShadow = true; d.shadow.mapSize.set(2048, 2048); const c = d.shadow.camera; c.left = -9; c.right = 9; c.top = 9; c.bottom = -9; c.near = 1; c.far = 40; d.shadow.bias = -0.0004; d.shadow.normalBias = 0.03; }
@@ -91,7 +91,7 @@ export class DressView extends Stage {
     this.focus('full'); this.token = 0;
   }
   focus(mode) {
-    const T = { full: [0.92, 4.6, 0.9], upper: [1.15, 2.6, 0.9], head: [1.6, 1.4, 0.8], feet: [0.2, 1.8, 0.9] }[mode] || [0.92, 4.6, 0.9];
+    const T = { full: [0.75, 4.4, 1.0], upper: [1.0, 2.7, 0.8], head: [1.18, 2.0, 0.5], feet: [0.15, 2.0, 0.6] }[mode] || [0.75, 4.4, 1.0];
     this.controls.target.set(0, T[0], 0);
     const az = this.controls.getAzimuthalAngle();
     this.camera.position.set(Math.sin(az) * T[1], T[0] + T[2] * 0.4, Math.cos(az) * T[1]);
