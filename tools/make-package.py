@@ -6,8 +6,8 @@ out = os.path.join(root, 'downloads', 'house-quiz-game.zip')
 os.makedirs(os.path.dirname(out), exist_ok=True)
 if os.path.exists(out): os.remove(out)
 top = 'house-quiz-game'
-files = ['server.js', 'catalog.js', 'questions.js', 'funny.js', 'qbank_open.js', 'qbank_more.js', 'qbank_vocab.js', 'qbank_brain.js', 'qbank_phil.js', 'core.js', 'storage.js', 'minigames.js', 'qgroups.js', 'qbank_wrong.js', 'qbank_lyrics.js', 'render.yaml', 'DEPLOY.md', 'package.json', 'package-lock.json', 'README.md', 'Dockerfile', '.dockerignore']
-dirs = ['public', 'qdata', 'src', 'tools', 'downloads/question-bank.csv']
+files = ['server.js', 'catalog.js', 'questions.js', 'funny.js', 'qbank_open.js', 'qbank_more.js', 'qbank_vocab.js', 'qbank_brain.js', 'qbank_phil.js', 'core.js', 'storage.js', 'minigames.js', 'qgroups.js', 'qbank_wrong.js', 'qbank_lyrics.js', 'qbank_songs.js', 'render.yaml', 'DEPLOY.md', 'package.json', 'package-lock.json', 'README.md', 'Dockerfile', '.dockerignore']
+dirs = ['public', 'qdata', 'src', 'tools', 'templates', 'downloads/question-bank.csv']
 
 BAT_HEAD = '@echo off\r\nchcp 65001 >nul\r\ncd /d "%~dp0"\r\ntitle 小屋大亨\r\nwhere node >nul 2>nul\r\nif errorlevel 1 (\r\n  echo [錯誤] 找不到 Node.js。\r\n  echo 請先安裝 Node.js（LTS 版）：https://nodejs.org ，安裝完成後重新雙擊本檔案。\r\n  start https://nodejs.org\r\n  pause\r\n  exit /b 1\r\n)\r\necho 目前的 Node.js 版本：\r\nnode -v\r\n'
 BAT_TAIL = 'set OPEN_BROWSER=1\r\nnode server.js\r\necho.\r\necho 伺服器已停止。如果一開始就停止，請把上面的紅字錯誤訊息截圖給我。\r\npause\r\n'
