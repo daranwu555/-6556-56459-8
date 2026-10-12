@@ -3,7 +3,9 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { DatabaseSync } = require('node:sqlite');
+const os = require('os');
+const { exec } = require('child_process');
+if (parseInt(process.versions.node, 10) < 16) { console.error('Node.js 版本太舊（' + process.versions.node + '），請安裝 Node.js 18 以上：https://nodejs.org'); process.exit(1); }
 const { WebSocketServer } = require('ws');
 const { STYLES, CATS, ITEMS } = require('./catalog');
 const { buildMatchQuestions, bankSize } = require('./questions');
@@ -49,12 +51,36 @@ const gridOf = (p) => CFG.houseLevels[p.houseLv - 1];
 // ───────── 存檔（SQLite；記憶體為主、定時寫回）─────────
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
-const db = new DatabaseSync(path.join(DATA_DIR, 'game.db'));
-db.exec(`
+// 存檔：優先用 Node 內建 SQLite（Node 22+）；沒有的話自動改用 JSON 檔（Node 16+ 皆可）
+function jsonDb(file) {
+  let data = { accounts: {}, qstats: {}, reports: [] }, need = false;
+  try { data = { ...data, ...JSON.parse(fs.readFileSync(file, 'utf8')) }; } catch (e) { /* 第一次啟動 */ }
+  return {
+    exec() {},
+    prepare(sql) {
+      if (sql.startsWith('SELECT username')) return { all: () => Object.entries(data.accounts).map(([username, profile]) => ({ username, profile })) };
+      if (sql.startsWith('SELECT id')) return { all: () => Object.entries(data.qstats).map(([id, v]) => ({ id, n: v.n, c: v.c })) };
+      if (sql.includes('INTO accounts')) return { run: (u, profile) => { data.accounts[u] = profile; need = true; } };
+      if (sql.includes('INTO qstats')) return { run: (id, n, c) => { data.qstats[id] = { n, c }; need = true; } };
+      return { run: (qid, q, reason, by, ts) => { data.reports.push({ qid, q, reason, by, ts }); need = true; } };
+    },
+    save() { if (!need) return; need = false; fs.writeFileSync(file + '.tmp', JSON.stringify(data)); fs.renameSync(file + '.tmp', file); },
+  };
+}
+let db;
+try {
+  if (process.env.NO_SQLITE) throw new Error('forced');
+  const { DatabaseSync } = require('node:sqlite');
+  db = new DatabaseSync(path.join(DATA_DIR, 'game.db'));
+  db.exec(`
 CREATE TABLE IF NOT EXISTS accounts(username TEXT PRIMARY KEY, profile TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS qstats(id TEXT PRIMARY KEY, n INTEGER NOT NULL, c INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS reports(id INTEGER PRIMARY KEY AUTOINCREMENT, qid TEXT, q TEXT, reason TEXT, by TEXT, ts INTEGER);
 `);
+} catch (e) {
+  db = jsonDb(path.join(DATA_DIR, 'game.json'));
+  console.log('提示：這個 Node 版本沒有內建 SQLite，改用 JSON 檔存檔（data/game.json）。');
+}
 const players = new Map();   // username -> profile
 const byToken = new Map();   // token -> profile
 const byPid = new Map();     // pid -> profile
@@ -74,6 +100,7 @@ function flush() {
   for (const u of dirty) { const p = players.get(u); if (p) upAcc.run(u, JSON.stringify(p)); }
   for (const id of dirtyQ) { const s = qstats.get(id); if (s) upQ.run(id, s.n, s.c); }
   dirty.clear(); dirtyQ.clear();
+  if (db.save) db.save();
 }
 setInterval(flush, 1000).unref();
 process.on('SIGINT', () => { flush(); process.exit(0); });
@@ -479,4 +506,26 @@ wss.on('connection', (ws) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`遊戲啟動：http://localhost:${PORT}  題庫：`, bankSize()));
+wss.on('error', () => {}); // 連接埠被占用時，ws 會轉發錯誤；由下面統一處理
+let tries = 0;
+server.on('error', (e) => {
+  const port = server.address() ? 0 : Number(server.__port);
+  if (e.code === 'EADDRINUSE' && tries++ < 10) { console.log(`連接埠 ${port} 已被使用，改用 ${port + 1}…`); server.__port = port + 1; server.listen(port + 1); }
+  else { console.error('伺服器無法啟動：', e.message); process.exit(1); }
+});
+server.on('listening', () => {
+  const port = server.address().port;
+  const lan = Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => `http://${i.address}:${port}`);
+  console.log('==============================================');
+  console.log(' 遊戲已啟動！請用瀏覽器開啟：');
+  console.log(`   本機：http://localhost:${port}`);
+  if (lan.length) console.log(`   區網（同一個 Wi-Fi 的其他裝置）：${lan.join('  ')}`);
+  console.log(' 題庫：', JSON.stringify(bankSize()), '／ 按 Ctrl+C 結束');
+  console.log('==============================================');
+  if (process.env.OPEN_BROWSER) {
+    const url = `http://localhost:${port}`;
+    exec(process.platform === 'win32' ? `start "" "${url}"` : process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`, () => {});
+  }
+});
+server.__port = Number(PORT);
+server.listen(server.__port);
