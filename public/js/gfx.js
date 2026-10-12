@@ -128,6 +128,7 @@ export class HouseView extends Stage {
     this.controls.minPolarAngle = 0.25; this.controls.maxPolarAngle = 1.38; this.controls.minDistance = 3;
     const dom = this.renderer.domElement;
     if (opt.interactive) {
+      this.bindKeys();
       let down = null;
       dom.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
       dom.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 6) this.click(e); down = null; });
@@ -155,7 +156,82 @@ export class HouseView extends Stage {
     // 角色（站在房間前方角落）
     const av = await buildAvatar(d.gender, d.worn, this.items);
     if (tk !== this.token) return;
-    this.avatar.clear(); av.position.set(d.cols / 2 - 0.6, 0, d.rows / 2 - 0.6); av.rotation.y = -0.5; this.avatar.add(av);
+    this.avatar.clear(); this.body = av; this.avatar.add(av);
+    this.buildNav(d);
+    if (!this.pos || !this.free(this.pos.x, this.pos.z)) { const s = this.nearestFree(d.cols / 2 - 0.8, d.rows / 2 - 0.8); this.pos = { x: s[0], z: s[1] }; av.rotation.y = -0.5; this.heading = -0.5; }
+    this.avatar.position.set(this.pos.x, 0, this.pos.z); this.path = []; if (this.heading !== undefined) av.rotation.y = this.heading;
+  }
+  // ── 房內走動：0.2 公尺格子的可走地圖（家具佔地 + 人物半徑），A* 找路 ──
+  buildNav(d) {
+    const C = 0.2, R = 0.28, cols = Math.ceil(d.cols / C), rows = Math.ceil(d.rows / C), blk = new Uint8Array(cols * rows);
+    const cell = (x, z) => [Math.floor((x + d.cols / 2) / C), Math.floor((z + d.rows / 2) / C)];
+    for (const p of d.house.placed) {
+      const it = this.items[p.id]; if (!it || it.layer === 'top' || !it.fp) continue;
+      const odd = p.rot % 2 !== 0, hw = (odd ? it.fp[1] : it.fp[0]) / 2 + R, hd = (odd ? it.fp[0] : it.fp[1]) / 2 + R;
+      const [x0, z0] = cell(p.x - hw, p.z - hd), [x1, z1] = cell(p.x + hw, p.z + hd);
+      for (let z = Math.max(0, z0); z <= Math.min(rows - 1, z1); z++) for (let x = Math.max(0, x0); x <= Math.min(cols - 1, x1); x++) blk[z * cols + x] = 1;
+    }
+    this.nav = { C, cols, rows, blk, cell, W: d.cols, D: d.rows, R };
+  }
+  free(x, z) {
+    const n = this.nav; if (!n) return true;
+    if (x < -n.W / 2 + n.R || x > n.W / 2 - n.R || z < -n.D / 2 + n.R || z > n.D / 2 - n.R) return false;
+    const [cx, cz] = n.cell(x, z); return !n.blk[cz * n.cols + cx];
+  }
+  nearestFree(x, z) {
+    for (let r = 0; r < 40; r++) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) { if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; const px = x + dx * 0.2, pz = z + dz * 0.2; if (this.free(px, pz)) return [px, pz]; }
+    return [0, 0];
+  }
+  findPath(from, to) { // A*（8 方向）
+    const n = this.nav, key = (c, r) => r * n.cols + c, [sc, sr] = n.cell(from.x, from.z); let [gc, gr] = n.cell(to[0], to[1]);
+    gc = Math.min(n.cols - 1, Math.max(0, gc)); gr = Math.min(n.rows - 1, Math.max(0, gr));
+    if (n.blk[key(gc, gr)]) { const f = this.nearestFree(to[0], to[1]); [gc, gr] = n.cell(f[0], f[1]); }
+    const open = [[0, sc, sr]], g = new Map([[key(sc, sr), 0]]), par = new Map(), h = (c, r) => Math.hypot(c - gc, r - gr);
+    while (open.length) {
+      open.sort((a, b) => a[0] - b[0]); const [, c, r] = open.shift();
+      if (c === gc && r === gr) { const out = []; let k = key(c, r); while (k !== undefined && k !== key(sc, sr)) { out.push([(k % n.cols + 0.5) * n.C - n.W / 2, (Math.floor(k / n.cols) + 0.5) * n.C - n.D / 2]); k = par.get(k); } return out.reverse(); }
+      for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++) {
+        if (!dc && !dr) continue; const nc = c + dc, nr = r + dr; if (nc < 0 || nr < 0 || nc >= n.cols || nr >= n.rows || n.blk[key(nc, nr)]) continue;
+        if (dc && dr && (n.blk[key(c + dc, r)] || n.blk[key(c, r + dr)])) continue; // 不斜穿牆角
+        const ng = g.get(key(c, r)) + (dc && dr ? 1.414 : 1); if (ng < (g.get(key(nc, nr)) ?? 1e9)) { g.set(key(nc, nr), ng); par.set(key(nc, nr), key(c, r)); open.push([ng + h(nc, nr), nc, nr]); }
+      }
+    }
+    return [];
+  }
+  walkTo(x, z) { if (!this.nav || !this.pos) return; this.path = this.findPath(this.pos, [x, z]); }
+  nudge(dx, dz) { // 鍵盤移動（沿牆滑動）
+    if (!this.pos || !this.nav) return; this.path = [];
+    const nx = this.pos.x + dx, nz = this.pos.z + dz;
+    if (this.free(nx, nz)) { this.pos.x = nx; this.pos.z = nz; } else if (this.free(nx, this.pos.z)) this.pos.x = nx; else if (this.free(this.pos.x, nz)) this.pos.z = nz; else return;
+    this.heading = Math.atan2(dx, dz); this.moving = 2;
+  }
+  onTick() {
+    if (!this.pos || !this.body) return;
+    const now = performance.now(), dt = Math.min(0.1, (now - (this.lastT || now)) / 1000); this.lastT = now;
+    if (this.keys && (this.keys.size)) {
+      const k = this.keys, ax = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0), az = (k.has('s') || k.has('arrowdown') ? 1 : 0) - (k.has('w') || k.has('arrowup') ? 1 : 0);
+      if (ax || az) { const l = Math.hypot(ax, az); this.nudge(ax / l * 2.4 * dt, az / l * 2.4 * dt); }
+    }
+    if (this.path && this.path.length) {
+      let step = 2.2 * dt;
+      while (step > 0 && this.path.length) {
+        const [tx, tz] = this.path[0], dx = tx - this.pos.x, dz = tz - this.pos.z, l = Math.hypot(dx, dz);
+        if (l <= step) { this.pos.x = tx; this.pos.z = tz; this.path.shift(); step -= l; } else { this.pos.x += dx / l * step; this.pos.z += dz / l * step; step = 0; }
+        if (l > 1e-3) this.heading = Math.atan2(dx, dz);
+      }
+      this.moving = 2;
+    }
+    this.avatar.position.set(this.pos.x, 0, this.pos.z);
+    let dh = this.heading - this.body.rotation.y; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); this.body.rotation.y += dh * Math.min(1, dt * 12);
+    const mv = this.moving > 0; if (mv) this.moving--;
+    this.body.position.y = mv ? Math.abs(Math.sin(now / 110)) * 0.05 : 0; this.body.rotation.z = mv ? Math.sin(now / 110) * 0.05 : 0;
+  }
+  bindKeys() {
+    if (this.keys) return; this.keys = new Set();
+    const ok = (e) => !/INPUT|TEXTAREA|SELECT/.test((e.target.tagName || '')) && this.el.offsetParent;
+    addEventListener('keydown', (e) => { const k = e.key.toLowerCase(); if ('wasd'.includes(k) && k.length === 1 || k.startsWith('arrow')) { if (!ok(e)) return; this.keys.add(k); e.preventDefault(); } });
+    addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    addEventListener('blur', () => this.keys.clear());
   }
   elev(p, beds) { // 床墊疊在床板上
     if (this.items[p.id].cat !== 'mattress') return 0;
@@ -234,7 +310,9 @@ export class HouseView extends Stage {
     }
     this.pointer(e);
     const hits = this.ray.intersectObjects(this.furn.children, true);
-    if (hits.length) { let o = hits[0].object; while (o && o.userData.index === undefined) o = o.parent; if (o) this.opt.onPick && this.opt.onPick(o.userData.index); }
+    if (hits.length) { let o = hits[0].object; while (o && o.userData.index === undefined) o = o.parent; if (o) { this.opt.onPick && this.opt.onPick(o.userData.index); return; } }
+    const fl = this.room.children.find((c) => c.name === 'floor'), fh = fl && this.ray.intersectObject(fl)[0];
+    if (fh && this.opt.walk !== false) this.walkTo(fh.point.x, fh.point.z); // 點空地：走過去
   }
 }
 

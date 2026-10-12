@@ -1,5 +1,5 @@
 import { HouseView, DressView, CityView, hydrateThumbs, assetUrl } from './gfx.js';
-import { playMine, playMemory, playNum } from './mini.js';
+import { playMine, playMemory, playNum, playFruit, playZombie } from './mini.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let ws, P = null, CAT = null, CFG = null, gender = 'm', view = 'house', mode = 'login';
@@ -106,7 +106,7 @@ function chips(el, entries, cur, cb) {
   });
 }
 function styleLine(d) {
-  const ids = [d.house.wall, d.house.carpet, ...d.house.placed.map((x) => x.id), ...Object.values(d.worn || {})].filter(Boolean);
+  const ids = [d.house.wall, d.house.carpet, ...d.house.placed.map((x) => x.id), ...Object.values(d.worn || {})].filter((id) => id && I(id) && I(id).style !== 'none');
   if (!ids.length) return '';
   const c = {}; ids.forEach((id) => { const s = I(id).style; c[s] = (c[s] || 0) + 1; });
   const [top, n] = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
@@ -120,6 +120,7 @@ const cloneHouse = (h) => JSON.parse(JSON.stringify(h));
 function ensureHouseStage() {
   if (houseStage) return;
   houseStage = new HouseView($('#room3d'), { interactive: true, onPlace, onPick, onInvalid: () => toast('這裡放不下，換個位置吧') });
+  window.__house = houseStage;
   houseStage.setItems(CAT.items);
   window.addEventListener('keydown', (e) => { if (view !== 'house' || !hold) return; if (e.key === 'r' || e.key === 'R') rotateHold(); if (e.key === 'Escape') cancelHold(); });
 }
@@ -232,7 +233,7 @@ function renderWare() {
 // ───── 商店 ─────
 function renderShop() {
   $('#shopInfo').innerHTML = `<h3>🏪 商店</h3><p class="mut">這裡販售家具、牆壁、地毯與建材。每件商品都有「持有上限」，賣出或用掉（擴建消耗建材）後可再購買。服飾只在「更衣室」販售。</p>`;
-  chips($('#shopStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles)], shopStyle, (k) => { shopStyle = k; renderShop(); });
+  chips($('#shopStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles).filter(([k]) => k !== 'ancient')], shopStyle, (k) => { shopStyle = k; renderShop(); });
   chips($('#shopCat'), [['all', '全部類別'], ...Object.entries(CAT.cats).filter(([, v]) => v.kind !== 'wear').map(([k, v]) => [k, v.label])], shopCat, (k) => { shopCat = k; renderShop(); });
   const tray = $('#shopTray'); tray.innerHTML = '';
   Object.values(CAT.items).filter((it) => !it.starter && it.kind !== 'wear' && (shopStyle === 'all' || it.style === shopStyle) && (shopCat === 'all' || it.cat === shopCat)).forEach((it) => {
@@ -255,11 +256,14 @@ function renderLobby() {
   $('#qStat').textContent = `戰績：${P.stats.played} 場 / ${P.stats.wins} 勝　最高連擊 ${P.stats.bestCombo}`;
 }
 function showQuiz(which) { ['Lobby', 'Wait', 'Play', 'End'].forEach((n) => $('#quiz' + n).classList.toggle('hidden', n.toLowerCase() !== which)); }
-$('#qOnline').onclick = () => send({ t: 'quiz', mode: 'online' });
-$('#qBot').onclick = () => send({ t: 'quiz', mode: 'bot' });
-$('#lyOnline').onclick = () => send({ t: 'quiz', mode: 'online', kind: 'lyrics' });
-$('#lyBot').onclick = () => send({ t: 'quiz', mode: 'bot', kind: 'lyrics' });
-$('#qCodeGo').onclick = () => send({ t: 'quiz', mode: 'code', code: $('#qCode').value });
+let lastQuiz = null, lastMini = null; // 「再來一場」要重開剛剛選的玩法
+const startQuiz = (m) => { lastQuiz = m; send(m); };
+const startMg = (m) => { lastMini = m; send(m); };
+$('#qOnline').onclick = () => startQuiz({ t: 'quiz', mode: 'online' });
+$('#qBot').onclick = () => startQuiz({ t: 'quiz', mode: 'bot' });
+$('#lyOnline').onclick = () => startQuiz({ t: 'quiz', mode: 'online', kind: 'lyrics' });
+$('#lyBot').onclick = () => startQuiz({ t: 'quiz', mode: 'bot', kind: 'lyrics' });
+$('#qCodeGo').onclick = () => startQuiz({ t: 'quiz', mode: 'code', code: $('#qCode').value });
 $('#qCancel').onclick = () => send({ t: 'cancelQueue' });
 $('#qReport').onclick = () => { if (curQ) { send({ t: 'report', qid: curQ, reason: '玩家回報' }); $('#qReport').classList.add('hidden'); } };
 
@@ -306,7 +310,7 @@ function showEnd(m) {
     <p>最高連擊 ${m.you.bestStreak}（combo ×${m.you.mul}）　獲得 💰 <b>${m.you.money}</b>${m.you.styleBonus ? `（含風格加成 +${m.you.styleBonus * 100}%）` : ''}　✨ <b>${m.you.exp}</b> 經驗　${m.you.levelUps ? '🎉 升級 ' + m.you.levelUps + ' 級！' : ''}</p>
     <p class="mut">扣除參加費 50 元，淨收益 <b style="color:${m.net >= 0 ? 'var(--ok)' : 'var(--bad)'}">${m.net >= 0 ? '+' : ''}${m.net}</b> 元</p>
     <button class="pri" id="again">再來一場</button> <button id="toHouse">回到房屋</button>`;
-  $('#again').onclick = () => showQuiz('lobby');
+  $('#again').onclick = () => { if (lastQuiz) { $('#again').disabled = true; send(lastQuiz); } else showQuiz('lobby'); };
   $('#toHouse').onclick = () => { view = 'house'; showQuiz('lobby'); renderAll(); };
 }
 
@@ -413,20 +417,23 @@ function renderMiniCards() {
     d.innerHTML = `<div class="nm" style="min-height:0"><b>${title}</b><br><span class="mut">${desc}</span></div><div class="pr">參加費 ${fee}　獎金 ${reward}</div>${extra || ''}<button class="pri">開始</button>`;
     d.querySelector('button').onclick = () => startFn(d); box.appendChild(d);
   };
-  Object.entries(M.mine).forEach(([k, L]) => add('💣 踩地雷', L.name, L.fee, L.reward, () => send({ t: 'mgStart', game: 'mine', level: k })));
-  add('🀄 記憶翻牌', M.memory.name, M.memory.fee, M.memory.reward, () => send({ t: 'mgStart', game: 'memory' }));
-  add('🔢 猜數字 1A2B', M.num.name, M.num.fee, M.num.reward, () => send({ t: 'mgStart', game: 'num' }));
+  Object.entries(M.mine).forEach(([k, L]) => add('💣 踩地雷', L.name, L.fee, L.reward, () => startMg({ t: 'mgStart', game: 'mine', level: k })));
+  add('🀄 記憶翻牌', M.memory.name, M.memory.fee, M.memory.reward, () => startMg({ t: 'mgStart', game: 'memory' }));
+  add('🔢 猜數字 1A2B', M.num.name, M.num.fee, M.num.reward, () => startMg({ t: 'mgStart', game: 'num' }));
+  add('🍉 切水果', M.fruit.name, M.fruit.fee, `${M.fruit.reward} 元＋${M.fruit.exp} 經驗`, () => startMg({ t: 'mgStart', game: 'fruit' }));
+  add('🧟 三格打殭屍', M.zombie.name, M.zombie.fee, `${M.zombie.reward} 元＋${M.zombie.exp} 經驗`, () => startMg({ t: 'mgStart', game: 'zombie' }));
 }
 function startMini(m) {
   mgInfo = m; if (mgStop) mgStop();
   $('#quizLobby').classList.add('hidden'); $('#mgLobby').classList.add('hidden'); $('#mgPlay').classList.remove('hidden'); $('#mgMsg').textContent = '';
-  const title = { mine: `💣 踩地雷　${CFG.minigames.mine[m.level] ? CFG.minigames.mine[m.level].name : ''}`, memory: '🀄 記憶翻牌', num: '🔢 猜數字 1A2B' }[m.game]; $('#mgTitle').textContent = title;
+  const title = { mine: `💣 踩地雷　${CFG.minigames.mine[m.level] ? CFG.minigames.mine[m.level].name : ''}`, memory: '🀄 記憶翻牌', num: '🔢 猜數字 1A2B', fruit: '🍉 切水果', zombie: '🧟 三格打殭屍' }[m.game]; $('#mgTitle').textContent = title;
   const host = $('#mgHost'), done = (log, win, secret) => { send({ t: 'mgEnd', log }); mgInfo.secret = secret; };
-  if (m.game === 'mine') mgStop = playMine(host, m, done); else if (m.game === 'memory') mgStop = playMemory(host, m, done); else mgStop = playNum(host, m, done);
+  if (m.game === 'mine') mgStop = playMine(host, m, done); else if (m.game === 'memory') mgStop = playMemory(host, m, done); else if (m.game === 'fruit') mgStop = playFruit(host, m, done); else if (m.game === 'zombie') mgStop = playZombie(host, m, done); else mgStop = playNum(host, m, done);
 }
 function mgResult(r) {
-  const back = '<div style="margin-top:10px"><button class="pri" id="mgBack">返回遊樂場</button></div>';
-  $('#mgMsg').innerHTML = (r.win ? `🎉 挑戰成功！${r.reward ? `獎金 +${r.reward} 元（今天還可領 ${r.left} 次）` : ''}` : '😢 挑戰失敗') + (r.note ? `<div class="mut">${r.note}</div>` : '') + (mgInfo && mgInfo.secret && !r.win ? `<div class="mut">密碼是 ${mgInfo.secret}</div>` : '') + back;
+  const back = '<div style="margin-top:10px"><button class="pri" id="mgAgain">再來一場</button> <button id="mgBack">返回遊樂場</button></div>';
+  $('#mgMsg').innerHTML = (r.win ? `🎉 挑戰成功！${r.reward ? `獎金 +${r.reward} 元${r.exp ? `、✨+${r.exp} 經驗` : ''}${r.levelUps ? `、🎉升 ${r.levelUps} 級` : ''}（今天還可領 ${r.left} 次）` : ''}` : '😢 挑戰失敗') + (r.note ? `<div class="mut">${r.note}</div>` : '') + (mgInfo && mgInfo.secret && !r.win ? `<div class="mut">密碼是 ${mgInfo.secret}</div>` : '') + back;
+  $('#mgAgain').onclick = () => { if (lastMini) send(lastMini); };
   $('#mgBack').onclick = () => { if (mgStop) mgStop(); mgStop = null; $('#mgPlay').classList.add('hidden'); $('#quizLobby').classList.remove('hidden'); $('#mgLobby').classList.remove('hidden'); };
 }
 

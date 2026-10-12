@@ -31,13 +31,13 @@ const CFG = {
   sellRate: 0.35,
   renameCost: 100000,        // 改名費用（取名免費，改名要錢）
   // 房屋等級：cols × rows 為房間大小（公尺）；第 n 項 = 擴建到等級 n+1 的條件
-  houseLevels: [
-    { cols: 6, rows: 4 },
-    { cols: 7, rows: 4, money: 300, mats: { material_wood: 5, material_brick: 5 } },
-    { cols: 7, rows: 5, money: 500, mats: { material_wood: 8, material_brick: 8, material_cement: 5 } },
-    { cols: 8, rows: 5, money: 800, mats: { material_brick: 10, material_cement: 10, material_glass: 5 } },
-    { cols: 9, rows: 5, money: 1200, mats: { material_wood: 10, material_cement: 10, material_glass: 10, material_steel: 10 } },
-    { cols: 10, rows: 6, money: 2000, mats: { material_brick: 20, material_cement: 20, material_glass: 15, material_steel: 20 } },
+  houseLevels: [ // 房間大小（公尺）。比舊版大 1.5 倍
+    { cols: 9, rows: 6 },
+    { cols: 10.5, rows: 6, money: 300, mats: { material_wood: 5, material_brick: 5 } },
+    { cols: 10.5, rows: 7.5, money: 500, mats: { material_wood: 8, material_brick: 8, material_cement: 5 } },
+    { cols: 12, rows: 7.5, money: 800, mats: { material_brick: 10, material_cement: 10, material_glass: 5 } },
+    { cols: 13.5, rows: 7.5, money: 1200, mats: { material_wood: 10, material_cement: 10, material_glass: 10, material_steel: 10 } },
+    { cols: 15, rows: 9, money: 2000, mats: { material_brick: 20, material_cement: 20, material_glass: 15, material_steel: 20 } },
   ],
   seenKeep: 300,             // 每位玩家記住最近見過的題數，盡量不重複
   // 城市：地塊、建築、管理者
@@ -57,7 +57,7 @@ const gridOf = (p) => CFG.houseLevels[p.houseLv - 1];
     const p = JSON.parse(r.profile);
     if (p.house.placed.some((x) => !Number.isFinite(x.z))) p.house.placed = []; // 舊版格子資料
     if (!p.city) p.city = newCity();                                              // 舊版存檔沒有城市
-    if (!p.mgDay) p.mgDay = { d: '', mine: 0, memory: 0, num: 0 };
+    if (!p.mgDay) p.mgDay = { d: '' };
     players.set(r.username, p); byToken.set(p.token, p); byPid.set(p.pid, p);
   }
   for (const r of env.storage.qstats()) qstats.set(r.id, { n: r.n, c: r.c });
@@ -85,7 +85,7 @@ function newProfile(username, password, name, gender) {
     shop: false, warehouseLv: 0,
     likes: 0, likedBy: [], seen: [], lastSeen: Date.now(),
     stats: { played: 0, wins: 0, bestCombo: 0 },
-    city: newCity(), mgDay: { d: '', mine: 0, memory: 0, num: 0 },
+    city: newCity(), mgDay: { d: '' },
   };
 }
 
@@ -147,7 +147,7 @@ function addExp(p, amount) {
 
 // 房屋風格加成
 function styleBonusOf(p) {
-  const ids = [p.house.wall, p.house.carpet, ...p.house.placed.map((x) => x.id), ...Object.values(p.worn)].filter(Boolean);
+  const ids = [p.house.wall, p.house.carpet, ...p.house.placed.map((x) => x.id), ...Object.values(p.worn)].filter((id) => id && ITEMS[id] && ITEMS[id].style !== 'none'); // 初始服裝不算風格
   if (ids.length < CFG.styleBonus.minItems) return 0;
   const c = {}; ids.forEach((id) => { const s = ITEMS[id].style; c[s] = (c[s] || 0) + 1; });
   return Math.max(...Object.values(c)) / ids.length >= CFG.styleBonus.ratio ? CFG.styleBonus.rate : 0;
@@ -272,7 +272,7 @@ function resolve(room) {
       p.chain = p.streak === 1 ? CFG.baseMoney : (p.chain + CFG.baseMoney) * p.mul;
       const b = CFG.comboBonus[p.streak];
       if (b) { p.bank += b.money; p.exp += b.exp; events[i].push(`${p.streak} 連答獎勵 +${b.money} 元 +${b.exp} 經驗`); }
-    } else { p.bank += p.chain; p.chain = 0; p.streak = 0; }
+    } else { if (p.streak >= 2) events[i].push(`連擊中斷！（原本 ${p.streak} 連擊，重新計算）`); p.bank += p.chain; p.chain = 0; p.streak = 0; }
   });
   qstats.set(q.id, st); dirtyQ.add(q.id);
 
@@ -478,7 +478,7 @@ function handle(sess, m) {
     }
     // ───── 小遊戲 ─────
     case 'mgStart': {
-      const g = m.game, cfg = g === 'mine' ? MG.MINE_LEVELS[m.level] : g === 'memory' ? MG.MEMORY : g === 'num' ? MG.NUMGAME : null;
+      const g = m.game, cfg = g === 'mine' ? MG.MINE_LEVELS[m.level] : g === 'memory' ? MG.MEMORY : g === 'num' ? MG.NUMGAME : g === 'fruit' ? MG.FRUIT : g === 'zombie' ? MG.ZOMBIE : null;
       if (!cfg) return err('未知的遊戲');
       if (p.money < cfg.fee) return err(`參加費需要 ${cfg.fee} 元`);
       p.money -= cfg.fee;
@@ -492,16 +492,18 @@ function handle(sess, m) {
       let win = false, cfg;
       if (g.game === 'mine') { cfg = MG.MINE_LEVELS[g.level]; win = MG.verifyMine(g.seed, g.level, m.log).win; }
       else if (g.game === 'memory') { cfg = MG.MEMORY; win = MG.verifyMemory(g.seed, m.log).win; }
-      else { cfg = MG.NUMGAME; win = MG.verifyNum(g.seed, m.log).win; }
+      else if (g.game === 'num') { cfg = MG.NUMGAME; win = MG.verifyNum(g.seed, m.log).win; }
+      else if (g.game === 'fruit') { cfg = MG.FRUIT; win = MG.verifyFruit(g.seed, m.log).win; }
+      else { cfg = MG.ZOMBIE; win = MG.verifyZombie(g.seed, m.log).win; }
       const day = new Date().toISOString().slice(0, 10);
-      if (!p.mgDay || p.mgDay.d !== day) p.mgDay = { d: day, mine: 0, memory: 0, num: 0 };
-      let reward = 0, note = '';
+      if (!p.mgDay || p.mgDay.d !== day) p.mgDay = { d: day };
+      let reward = 0, exp = 0, ups = 0, note = '';
       if (win) {
         if (elapsed < cfg.minMs * (tScale() > 1 ? 0 : 1)) note = '完成得太快，沒有獎勵（為了防止作弊）';
-        else if (p.mgDay[g.game] >= MG.DAILY_CAP) note = `今天這個遊戲的獎勵已領滿（每天 ${MG.DAILY_CAP} 次）`;
-        else { reward = cfg.reward; p.mgDay[g.game]++; p.money += reward; }
+        else if ((p.mgDay[g.game] || 0) >= MG.DAILY_CAP) note = `今天這個遊戲的獎勵已領滿（每天 ${MG.DAILY_CAP} 次）`;
+        else { reward = cfg.reward; p.mgDay[g.game] = (p.mgDay[g.game] || 0) + 1; p.money += reward; if (cfg.exp) { exp = cfg.exp; ups = addExp(p, exp); } }
       }
-      ok(); return send(sess, { t: 'mgResult', game: g.game, win, reward, note, left: MG.DAILY_CAP - p.mgDay[g.game], fee: cfg.fee });
+      ok(); return send(sess, { t: 'mgResult', game: g.game, level: g.level, win, reward, exp, levelUps: ups, note, left: MG.DAILY_CAP - (p.mgDay[g.game] || 0), fee: cfg.fee });
     }
     case 'board': return send(sess, { t: 'board', ...boardData(p) });
     case 'visit': {
@@ -553,7 +555,7 @@ function auth(sess, m) {
   send(sess, {
     t: 'welcome', token: p.token, p: publicProfile(p),
     catalog: { items: ITEMS, cats: CATS, styles: STYLES, buildings: BUILDINGS, specs: SPECS },
-    cfg: { city: CFG.city, minigames: { mine: MG.MINE_LEVELS, memory: MG.MEMORY, num: MG.NUMGAME, cap: MG.DAILY_CAP }, offline: !!env.offline, entryFee: CFG.entryFee, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, renameCost: CFG.renameCost, noviceLevel: CFG.noviceLevel, likeReward: CFG.likeReward, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
+    cfg: { city: CFG.city, minigames: { mine: MG.MINE_LEVELS, memory: MG.MEMORY, num: MG.NUMGAME, fruit: MG.FRUIT, zombie: MG.ZOMBIE, cap: MG.DAILY_CAP }, offline: !!env.offline, entryFee: CFG.entryFee, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, renameCost: CFG.renameCost, noviceLevel: CFG.noviceLevel, likeReward: CFG.likeReward, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
   });
   broadcastOnline();
 }

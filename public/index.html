@@ -50,7 +50,7 @@ nav button{flex:1;min-width:80px;padding:9px 4px;font-size:15px}
 .it .pr{font-weight:700;color:var(--acc);font-size:13px}
 .it button{margin-top:4px;padding:2px 6px;font-size:12px;width:100%}
 .tag{font-size:10px;padding:0 6px;background:#0007;display:inline-block;border-radius:2px;border:1px solid #ffffff22}
-.tag.cool{background:#33505b}.tag.cute{background:#8f3d52}.tag.fun{background:#8a6a1a}
+.tag.cool{background:#33505b}.tag.cute{background:#8f3d52}.tag.fun{background:#8a6a1a}.tag.ancient{background:#6b3a1f}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .chips button{padding:2px 12px;font-size:13px}
 /* 問答 */
@@ -148,6 +148,7 @@ input.bad{outline:2px solid var(--bad)}
         <span class="mut grow" id="houseHint"></span>
       </div>
       <div class="stage3d" id="room3d"></div>
+      <div class="mut" style="margin-top:4px">🚶 點地板空白處讓角色走過去，或用 W A S D／方向鍵操控；點家具可拿起來重新擺放。</div>
       <div class="mut" style="margin-top:6px">拖曳旋轉視角、滾輪縮放；選好家具後點地板擺放，綠色=可放、紅色=重疊；點已擺放的家具可拿起來移動。</div>
     </div>
     <div class="card" id="expandBox"></div>
@@ -215,7 +216,7 @@ input.bad{outline:2px solid var(--bad)}
       </div>
       <div class="row" id="qCodeRow" style="margin-top:10px"><input id="qCode" maxlength="8" placeholder="邀請碼（3~8 英數字）" style="width:200px;margin:0"><button id="qCodeGo">👥 好友對戰</button><span class="mut">與朋友輸入相同邀請碼即可對戰</span></div>
       <h3 style="margin-top:18px">🎼 猜歌詞對戰</h3>
-      <div class="mut">10 題古詩詞與傳統童謠的填空（皆為公共領域作品），規則與獎勵同上。</div>
+      <div class="mut">10 題猜歌詞（傳統童謠／民謠／國歌／英文經典兒歌等公共領域歌曲的歌詞填空）＋歌手與電影配樂小知識。想加入流行歌，可把自己的歌詞 CSV 放進 data/lyrics/ 資料夾（見 templates/lyrics.csv）。規則與獎勵同上。</div>
       <div class="row" style="margin-top:10px"><button class="pri" id="lyOnline">🌐 線上配對</button><button id="lyBot">🤖 對戰電腦</button></div>
       <p class="mut" id="qStat"></p>
     </div>

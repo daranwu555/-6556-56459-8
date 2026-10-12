@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const CATEGORIES = ['地理', '天文', '歷史', '會計', '護理', '科學', '生物', '生活常識', '體育', '文學藝術', '科技', '腦筋急轉彎', '哲學', '猜歌詞'];
+const CATEGORIES = ['地理', '天文', '歷史', '會計', '護理', '科學', '生物', '生活常識', '體育', '文學藝術', '科技', '腦筋急轉彎', '哲學', '詩詞填空', '猜歌詞'];
 
 // [分類, 題目, 正解, 錯1, 錯2, 錯3]
 const SEED = [
@@ -263,6 +263,17 @@ function parseCSV(text) {
   row.push(cur); if (row.some((x) => x.trim())) rows.push(row);
   return rows;
 }
+// 使用者自己提供的歌詞（data/lyrics/*.csv：歌名,句子,答案,錯1,錯2,錯3）
+function loadLyricsDir(dir) {
+  const out = [];
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.csv')) continue;
+      for (const r of parseCSV(fs.readFileSync(path.join(dir, f), 'utf8')).slice(1)) if (r.length >= 3 && r[1].includes('____') && r[2].trim()) out.push(mkItem('猜歌詞', `猜歌詞（${r[0].trim()}）：「${r[1].trim()}」`, r[2].trim(), r.slice(3).map((v) => v.trim()).filter(Boolean), null, '使用者提供'));
+    }
+  } catch (e) { /* 沒有 */ }
+  return out;
+}
 function loadDir(dir, src) {
   const out = [];
   try {
@@ -292,7 +303,10 @@ const BANK = [
   ...require('./qbank_vocab').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...require('./qbank_brain').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
   ...require('./qbank_phil').map(([c, q, a, ...w]) => mkItem(c, q, a, w)),
-  ...require('./qbank_lyrics').map(([t, a, w1, w2, w3, src]) => mkItem('猜歌詞', `猜歌詞（${src}）：「${t}」`, a, [w1, w2, w3])),
+  ...require('./qbank_lyrics').map(([t, a, w1, w2, w3, src]) => mkItem('詩詞填空', `詩詞填空（${src}）：「${t}」`, a, [w1, w2, w3])),
+  ...require('./qbank_songs').LYRICS.map(([t, a, w1, w2, w3, src]) => mkItem('猜歌詞', `猜歌詞（${src}）：「${t}」`, a, [w1, w2, w3])),
+  ...require('./qbank_songs').FACTS.map(([q, a, tag]) => mkItem('猜歌詞', q, a, null, tag)),
+  ...loadLyricsDir(path.join(__dirname, 'data', 'lyrics')),
   ...require('./qdata/math.json').map((x) => mkItem(x.c, x.q, x.a, x.w, x.t, '程式生成')),
 ];
 const EXTERNAL = loadDir(path.join(__dirname, 'data', 'questions'), '外部匯入');

@@ -11,6 +11,7 @@ const PI = Math.PI;
 const PAL = {
   cool: { main: '#2f3542', alt: '#596378', acc: '#00e5ff', metal: '#a3adbf', dark: '#14161d', wood: '#3a3330', light: '#d9dee8' },
   cute: { main: '#ffb3d1', alt: '#fff0f6', acc: '#ff6fa5', metal: '#f3dbe5', dark: '#a85a7c', wood: '#f4d9b8', light: '#ffffff' },
+  ancient: { main: '#e8e2d0', alt: '#7a1f1f', acc: '#c9a227', metal: '#d9c27a', dark: '#2b2118', wood: '#8a5a2b', light: '#f6f1e4' },
   fun: { main: '#ffcf3d', alt: '#4da6ff', acc: '#ff5a5f', metal: '#6bd36b', dark: '#7a4cff', wood: '#e89a3c', light: '#fff6c9' },
 };
 const RAINBOW = ['#ff4d4d', '#ff9f43', '#ffd93d', '#4cd137', '#4da6ff', '#a55eea'];
@@ -175,6 +176,38 @@ W.suit_cute_0 = (m, p) => { torso(m, p.main, matte, { sleeve: 0.12 }); for (cons
 W.suit_cute_1 = (m, p) => { const b = '#a8743f'; torso(m, b, matte); pants(m, b, matte); sp(m, b, 0.15, 0.15, 0.15, 0, 1.6, -0.035, matte); for (const s of [-1, 1]) { sp(m, b, 0.05, 0.05, 0.03, s * 0.1, 1.72, -0.03, matte); sp(m, '#f5d9b5', 0.03, 0.03, 0.015, s * 0.1, 1.72, -0.012, matte); sp(m, '#f5d9b5', 0.055, 0.045, 0.05, s * 0.255, 0.92, 0, matte); } sp(m, '#f5d9b5', 0.12, 0.17, 0.03, 0, 1.12, 0.12, matte); sp(m, b, 0.06, 0.06, 0.06, 0, 0.82, -0.14, matte); };
 W.suit_fun_0 = (m, p) => { const g = '#3fae55'; torso(m, g, matte); pants(m, g, matte); sp(m, g, 0.15, 0.15, 0.15, 0, 1.6, -0.035, matte); bx(m, g, 0.14, 0.07, 0.1, 0, 1.58, 0.12, 0, matte); for (const s of [-1, 1]) { sp(m, '#fff', 0.025, 0.025, 0.02, s * 0.07, 1.68, 0.08, matte); sp(m, '#111', 0.012, 0.012, 0.01, s * 0.07, 1.68, 0.1, matte); } for (let i = 0; i < 5; i++) cy(m, p.acc, 0, 0.04, 0.09, 0, 1.4 - i * 0.12, -0.14 - (i === 0 ? 0 : 0), [-0.5, 0, 0], matte, 4); cy(m, g, 0, 0.09, 0.5, 0, 0.7, -0.35, [-1.2, 0, 0], matte, 10); };
 W.suit_fun_1 = (m, p) => { torso(m, '#fff', matte); pants(m, '#fff', matte); sp(m, '#fff', 0.15, 0.15, 0.15, 0, 1.6, -0.035, matte); cy(m, '#ffd93d', 0, 0.025, 0.2, 0, 1.73, 0.06, [0.2, 0, 0], shiny, 10); for (const s of [-1, 1]) cy(m, '#fff', 0, 0.04, 0.1, s * 0.09, 1.73, -0.02, [0, 0, -s * 0.3], matte, 6); RAINBOW.forEach((c, i) => { sp(m, c, 0.045, 0.045, 0.045, 0, 1.68 - i * 0.1, -0.14, matte); }); RAINBOW.forEach((c, i) => sp(m, c, 0.06, 0.06, 0.06, 0, 0.9 - i * 0.04, -0.2 - i * 0.04, matte)); };
+
+// ── 古風系列（武俠）：每個部位 5 件 ──
+// 頭飾
+W.head_ancient_0 = (m, p) => { cy(m, '#1f2a44', 0.13, 0.135, 0.1, 0, 1.68, 0, 0, matte, 18); bx(m, '#1f2a44', 0.05, 0.16, 0.012, 0, 1.68, -0.12, [0.25, 0, 0], matte); bx(m, p.metal, 0.12, 0.012, 0.012, 0, 1.69, 0.13, 0, shiny); };
+W.head_ancient_1 = (m, p) => { cy(m, p.metal, 0.05, 0.06, 0.07, 0, 1.78, -0.01, 0, shiny, 14); sp(m, '#4cb88a', 0.025, 0.025, 0.025, 0, 1.87, -0.01, shiny); bx(m, '#d9c27a', 0.014, 0.014, 0.4, 0, 1.76, -0.01, [0, 0, 0], shiny); cy(m, '#d9c27a', 0.006, 0.006, 0.3, 0.05, 1.7, -0.02, [0, 0, 1.5], shiny, 6); };
+W.head_ancient_2 = (m, p) => { cy(m, '#c9a05a', 0.01, 0.34, 0.12, 0, 1.68, 0, 0, matte, 24); to(m, '#7a5a2b', 0.33, 0.012, 0, 1.68, 0, [PI / 2, 0, 0], [1, 1, 1], matte); for (const s of [-1, 1]) bx(m, '#7a1f1f', 0.01, 0.2, 0.01, s * 0.12, 1.5, 0.08, 0, matte); };
+W.head_ancient_3 = (m, p) => { sp(m, '#f4f1ea', 0.125, 0.14, 0.04, 0, 1.6, 0.125, matte); for (const s of [-1, 1]) { sp(m, '#d33', 0.03, 0.012, 0.012, s * 0.05, 1.625, 0.162, matte); } sp(m, '#d33', 0.02, 0.03, 0.01, 0, 1.58, 0.168, matte); for (const s of [-1, 1]) sp(m, '#f4f1ea', 0.03, 0.06, 0.02, s * 0.07, 1.72, 0.09, matte); };
+W.head_ancient_4 = (m, p) => { cy(m, p.metal, 0.008, 0.008, 0.3, 0.1, 1.62, -0.03, [0, 0, 0.5], shiny, 6); for (let i = 0; i < 3; i++) sp(m, ['#ff5d7a', '#4cb88a', '#4da6ff'][i], 0.03, 0.03, 0.03, 0.14 + i * 0.015, 1.8 - i * 0.04, -0.02, shiny); sp(m, p.metal, 0.07, 0.04, 0.03, -0.1, 1.76, 0.03, shiny); };
+// 套裝
+W.suit_ancient_0 = (m, p) => { torso(m, '#f6f3ea', matte); pants(m, '#f6f3ea', matte); bx(m, '#2a3a5e', 0.37, 0.05, 0.24, 0, 1.0, 0, 0, matte); sp(m, '#f6f3ea', 0.15, 0.15, 0.15, 0, 1.6, -0.035, matte); bx(m, p.metal, 0.05, 0.05, 0.02, 0, 1.0, 0.125, 0, shiny); };
+W.suit_ancient_1 = (m, p) => { const c = '#2b3d5e'; torso(m, c, matte, { sleeve: 0.5 }); cy(m, c, 0.19, 0.3, 0.8, 0, 0.1, 0, 0, matte, 24); bx(m, '#f6f3ea', 0.04, 0.6, 0.012, 0, 0.9, 0.128, 0, matte); bx(m, '#e0b54a', 0.37, 0.04, 0.24, 0, 1.0, 0, 0, matte); };
+W.suit_ancient_2 = (m, p) => { const c = '#7a1f1f'; torso(m, c, matte); pants(m, c, matte); bx(m, '#111', 0.37, 0.06, 0.24, 0, 1.0, 0, 0, matte); for (const y of [1.15, 1.3]) bx(m, p.metal, 0.3, 0.012, 0.012, 0, y, 0.13, 0, shiny); to(m, p.metal, 0.19, 0.012, 0, 1.4, 0, [PI / 2, 0, 0], [1, 1, 0.68], shiny); };
+W.suit_ancient_3 = (m, p) => { const c = '#c0392b'; torso(m, c, matte, { sleeve: 0.3 }); cy(m, c, 0.19, 0.42, 0.78, 0, 0.1, 0, 0, matte, 28); to(m, '#f6c3a0', 0.4, 0.015, 0, 0.12, 0, [PI / 2, 0, 0], [1, 1, 1], matte); bx(m, '#ffd93d', 0.37, 0.05, 0.24, 0, 1.0, 0, 0, matte); };
+W.suit_ancient_4 = (m, p) => { const c = '#232a3a'; torso(m, c, matte); pants(m, c, matte, 0.78, 0.095); for (let i = 0; i < 6; i++) sp(m, '#c9d3e0', 0.03, 0.03, 0.01, -0.12 + i * 0.048, 1.32 - (i % 2) * 0.04, 0.128, shiny); to(m, '#c9d3e0', 0.19, 0.02, 0, 1.0, 0, [PI / 2, 0, 0], [1, 1, 0.68], shiny); bx(m, '#7a1f1f', 0.4, 0.05, 0.26, 0, 0.98, 0, 0, matte); };
+// 上衣
+W.top_ancient_0 = (m, p) => { torso(m, '#4f8f8a', matte, { sleeve: 0.4 }); bx(m, '#f6f3ea', 0.04, 0.5, 0.012, 0, 0.9, 0.128, 0, matte); bx(m, '#3a3f4b', 0.37, 0.04, 0.24, 0, 0.9, 0, 0, matte); };
+W.top_ancient_1 = (m, p) => { torso(m, '#c0392b', matte, { sleeve: 0.46 }); to(m, '#ffd93d', 0.19, 0.012, 0, 1.4, 0, [PI / 2, 0, 0], [1, 1, 0.68], shiny); bx(m, '#ffd93d', 0.37, 0.04, 0.24, 0, 0.92, 0, 0, matte); };
+W.top_ancient_2 = (m, p) => { torso(m, '#14151a', matte, { sleeve: 0.42 }); bx(m, '#14151a', 0.2, 0.2, 0.15, 0, 1.4, -0.02, 0, matte); bx(m, '#7a1f1f', 0.37, 0.03, 0.24, 0, 0.95, 0, 0, matte); };
+W.top_ancient_3 = (m, p) => { torso(m, '#8a5bb8', { m: 0, r: 0.6 }, { sleeve: 0.52 }); to(m, '#e8d9ff', 0.19, 0.014, 0, 1.38, 0, [PI / 2, 0, 0], [1, 1, 0.68], matte); cy(m, '#e8d9ff', 0.2, 0.2, 0.03, 0, 0.88, 0, 0, matte, 20); };
+W.top_ancient_4 = (m, p) => { torso(m, '#6b4a2a', matte, { sleeve: 0.2 }); for (const s of [-1, 1]) { sp(m, '#8e97a6', 0.1, 0.07, 0.1, s * 0.21, 1.42, 0, shiny); bx(m, '#3a2a18', 0.01, 0.1, 0.01, s * 0.2, 1.3, 0.05, 0, matte); } bx(m, '#8e97a6', 0.3, 0.2, 0.012, 0, 1.12, 0.13, 0, shiny); };
+// 下裝
+W.bottom_ancient_0 = (m, p) => pants(m, '#f6f3ea', matte, 0.78, 0.105);
+W.bottom_ancient_1 = (m, p) => { m.add(cyl(0.18, 0.185, 0.1, 20), m.mat('#7a1f1f', matte), { p: [0, 0.87, 0], s: [1, 1, 0.68] }); cy(m, '#c0392b', 0.19, 0.36, 0.7, 0, 0.17, 0, 0, matte, 28); to(m, '#ffd93d', 0.3, 0.012, 0, 0.5, 0, [PI / 2, 0, 0], [1, 1, 1], matte); };
+W.bottom_ancient_2 = (m, p) => { pants(m, '#6e6a5e', matte, 0.78, 0.095); for (const s of [-1, 1]) cy(m, '#3a372f', 0.075, 0.07, 0.06, s * 0.095, 0.1, 0, 0, matte, 14); };
+W.bottom_ancient_3 = (m, p) => { pants(m, '#1b1d28', matte, 0.78, 0.11); bx(m, '#c9a227', 0.37, 0.03, 0.24, 0, 0.92, 0, 0, matte); };
+W.bottom_ancient_4 = (m, p) => { m.add(cyl(0.18, 0.185, 0.1, 20), m.mat('#2f7a52', matte), { p: [0, 0.87, 0], s: [1, 1, 0.68] }); for (let i = 0; i < 8; i++) { const a = (i / 8) * PI * 2; bx(m, i % 2 ? '#3f9c6a' : '#2f7a52', 0.14, 0.62, 0.02, Math.cos(a) * 0.17, 0.2, Math.sin(a) * 0.17, [0, -a + PI / 2, 0], matte); } };
+// 鞋子
+W.shoes_ancient_0 = (m, p) => feet(m, (x) => { shoe(m, x, { c: '#23232b', sole: '#f6f3ea', h: 0.2 }); sp(m, '#c9a227', 0.05, 0.03, 0.02, x, 0.1, 0.2, shiny); });
+W.shoes_ancient_1 = (m, p) => feet(m, (x) => { bx(m, '#c9a05a', 0.12, 0.03, 0.27, x, 0, 0.04, 0, matte); for (const s of [-1, 1]) bx(m, '#8a5a2b', 0.012, 0.03, 0.22, x + s * 0.04, 0.03, 0.05, 0, matte); bx(m, '#8a5a2b', 0.12, 0.012, 0.012, x, 0.06, 0.08, 0, matte); });
+W.shoes_ancient_2 = (m, p) => feet(m, (x) => { shoe(m, x, { c: '#c0392b', sole: '#f6f3ea', h: 0.06 }); sp(m, '#ffd93d', 0.025, 0.02, 0.01, x, 0.1, 0.19, matte); });
+W.shoes_ancient_3 = (m, p) => feet(m, (x) => { shoe(m, x, { c: '#101015', sole: '#2a2a30', h: 0.36, mat: shiny }); bx(m, '#c9a227', 0.13, 0.015, 0.14, x, 0.37, 0, 0, shiny); });
+W.shoes_ancient_4 = (m, p) => feet(m, (x) => { bx(m, '#8a5a2b', 0.12, 0.03, 0.27, x, 0.05, 0.04, 0, matte); for (const z of [-0.05, 0.12]) bx(m, '#6b4423', 0.12, 0.05, 0.03, x, 0, z, 0, matte); bx(m, '#d33', 0.1, 0.012, 0.02, x, 0.09, 0.04, [0, 0, 0], matte); });
 
 // ═════════ 材質 PNG（牆壁、地毯）═════════
 const rnd = (x, y, s = 0) => { const n = Math.sin(x * 12.9898 + y * 78.233 + s) * 43758.5453; return n - Math.floor(n); };
