@@ -33,7 +33,7 @@ function addLights(scene, shadows) {
   const d = new THREE.DirectionalLight(0xfff4e0, 1.6);
   d.position.set(6, 11, 7);
   if (shadows) { d.castShadow = true; d.shadow.mapSize.set(2048, 2048); const c = d.shadow.camera; c.left = -9; c.right = 9; c.top = 9; c.bottom = -9; c.near = 1; c.far = 40; d.shadow.bias = -0.0004; d.shadow.normalBias = 0.03; }
-  scene.add(d);
+  scene.add(d); scene.userData.sun = d;
 }
 
 // ───── 舞台基底 ─────
@@ -47,7 +47,7 @@ class Stage {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     if (shadows) { this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; }
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 120);
+    this.camera = new THREE.PerspectiveCamera(40, 1, 0.5, 200);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true; this.controls.dampingFactor = 0.08; this.controls.enablePan = false;
     el.appendChild(this.renderer.domElement);
@@ -156,14 +156,15 @@ export class HouseView extends Stage {
     // 角色（站在房間前方角落）
     const av = await buildAvatar(d.gender, d.worn, this.items);
     if (tk !== this.token) return;
-    this.avatar.clear(); this.body = av; this.avatar.add(av);
+    this.avatar.clear(); this.pivot = new THREE.Group(); this.pivot.add(av); this.avatar.add(this.pivot); this.body = av;
     this.buildNav(d);
-    if (!this.pos || !this.free(this.pos.x, this.pos.z)) { const s = this.nearestFree(d.cols / 2 - 0.8, d.rows / 2 - 0.8); this.pos = { x: s[0], z: s[1] }; av.rotation.y = -0.5; this.heading = -0.5; }
-    this.avatar.position.set(this.pos.x, 0, this.pos.z); this.path = []; if (this.heading !== undefined) av.rotation.y = this.heading;
+    if (this.pos && this.pose.mode !== 'stand' && !d.house.placed.some((q) => Math.hypot(q.x - this.pos.x, q.z - this.pos.z) < 0.5)) this.leavePose(); // 家具被拿走了
+    if (!this.pos || (this.pose.mode === 'stand' && !this.free(this.pos.x, this.pos.z))) { const s = this.nearestFree(d.cols / 2 - 0.8, d.rows / 2 - 0.8); this.pos = { x: s[0], z: s[1] }; this.pivot.rotation.y = -0.5; this.heading = -0.5; }
+    this.avatar.position.set(this.pos.x, 0, this.pos.z); if (!this.action) this.path = []; if (this.heading !== undefined) this.pivot.rotation.y = this.heading;
   }
   // ── 房內走動：0.2 公尺格子的可走地圖（家具佔地 + 人物半徑），A* 找路 ──
   buildNav(d) {
-    const C = 0.2, R = 0.28, cols = Math.ceil(d.cols / C), rows = Math.ceil(d.rows / C), blk = new Uint8Array(cols * rows);
+    const C = d.cols * d.rows > 120 ? 0.3 : 0.2, R = 0.28, cols = Math.ceil(d.cols / C), rows = Math.ceil(d.rows / C), blk = new Uint8Array(cols * rows);
     const cell = (x, z) => [Math.floor((x + d.cols / 2) / C), Math.floor((z + d.rows / 2) / C)];
     for (const p of d.house.placed) {
       const it = this.items[p.id]; if (!it || it.layer === 'top' || !it.fp) continue;
@@ -179,7 +180,7 @@ export class HouseView extends Stage {
     const [cx, cz] = n.cell(x, z); return !n.blk[cz * n.cols + cx];
   }
   nearestFree(x, z) {
-    for (let r = 0; r < 40; r++) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) { if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; const px = x + dx * 0.2, pz = z + dz * 0.2; if (this.free(px, pz)) return [px, pz]; }
+    for (let r = 0; r < 40; r++) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) { if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; const px = x + dx * 0.25, pz = z + dz * 0.25; if (this.free(px, pz)) return [px, pz]; }
     return [0, 0];
   }
   findPath(from, to) { // A*（8 方向）
@@ -198,9 +199,9 @@ export class HouseView extends Stage {
     }
     return [];
   }
-  walkTo(x, z) { if (!this.nav || !this.pos) return; this.path = this.findPath(this.pos, [x, z]); }
+  walkTo(x, z) { if (!this.nav || !this.pos) return; this.leavePose(); this.action = null; this.path = this.findPath(this.pos, [x, z]); }
   nudge(dx, dz) { // 鍵盤移動（沿牆滑動）
-    if (!this.pos || !this.nav) return; this.path = [];
+    if (!this.pos || !this.nav) return; this.leavePose(); this.action = null; this.path = [];
     const nx = this.pos.x + dx, nz = this.pos.z + dz;
     if (this.free(nx, nz)) { this.pos.x = nx; this.pos.z = nz; } else if (this.free(nx, this.pos.z)) this.pos.x = nx; else if (this.free(this.pos.x, nz)) this.pos.z = nz; else return;
     this.heading = Math.atan2(dx, dz); this.moving = 2;
@@ -222,9 +223,34 @@ export class HouseView extends Stage {
       this.moving = 2;
     }
     this.avatar.position.set(this.pos.x, 0, this.pos.z);
-    let dh = this.heading - this.body.rotation.y; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); this.body.rotation.y += dh * Math.min(1, dt * 12);
+    if (this.action && !(this.path && this.path.length)) { const a = this.action; this.action = null; this.enterPose(a); }
+    let dh = this.heading - this.pivot.rotation.y; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); this.pivot.rotation.y += dh * Math.min(1, dt * 12);
     const mv = this.moving > 0; if (mv) this.moving--;
-    this.body.position.y = mv ? Math.abs(Math.sin(now / 110)) * 0.05 : 0; this.body.rotation.z = mv ? Math.sin(now / 110) * 0.05 : 0;
+    const pm = this.pose.mode, b = this.body;
+    if (pm === 'sit') { b.position.set(0, -0.3, 0); b.rotation.set(0, 0, 0); }
+    else if (pm === 'sleep') { b.position.set(0, 0.62 + Math.sin(now / 900) * 0.008, 0.85); b.rotation.set(-Math.PI / 2, 0, 0); }
+    else { b.position.set(0, mv ? Math.abs(Math.sin(now / 110)) * 0.05 : 0, 0); b.rotation.set(0, 0, mv ? Math.sin(now / 110) * 0.05 : 0); }
+  }
+  // ── 坐下／睡覺：先走到家具旁，再進入姿勢 ──
+  get pose() { return this._pose || (this._pose = { mode: 'stand' }); }
+  act(i, kind) { // kind: 'sit' | 'sleep'
+    const p = this.data && this.data.house.placed[i]; if (!p || !this.nav) return false;
+    this.leavePose(); const near = this.nearestFree(p.x, p.z + 0.9);
+    this.path = this.findPath(this.pos, near); this.action = { kind, x: p.x, z: p.z, heading: p.rot * Math.PI / 2, stand: near };
+    return true;
+  }
+  enterPose(a) {
+    this.pose.mode = a.kind; this.pose.stand = a.stand; this.pos = { x: a.x, z: a.z }; this.heading = a.heading; this.pivot.rotation.y = a.heading; this.path = [];
+    this.avatar.position.set(a.x, 0, a.z); this.opt.onPose && this.opt.onPose(a.kind);
+  }
+  restoreSit() { // 重新整理頁面後，如果伺服器說還在休息，就直接坐回第一張椅子
+    const i = this.data.house.placed.findIndex((p) => this.items[p.id] && this.items[p.id].cat === 'table'); if (i < 0 || this.pose.mode === 'sit') return !!(i >= 0);
+    const p = this.data.house.placed[i]; this.enterPose({ kind: 'sit', x: p.x, z: p.z, heading: p.rot * Math.PI / 2, stand: this.nearestFree(p.x, p.z + 0.9) }); return true;
+  }
+  leavePose() {
+    if (this.pose.mode === 'stand') return; const old = this.pose.mode, st = this.pose.stand; this.pose.mode = 'stand';
+    if (st) { this.pos = { x: st[0], z: st[1] }; this.avatar.position.set(st[0], 0, st[1]); }
+    this.opt.onLeavePose && this.opt.onLeavePose(old);
   }
   bindKeys() {
     if (this.keys) return; this.keys = new Set();
@@ -251,7 +277,7 @@ export class HouseView extends Stage {
     if (!carpTex) { // 木地板線條
       const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(Array.from({ length: Math.floor(D / 0.3) + 1 }, (_, i) => [new THREE.Vector3(-W / 2, 0.002, -D / 2 + i * 0.3), new THREE.Vector3(W / 2, 0.002, -D / 2 + i * 0.3)]).flat()), new THREE.LineBasicMaterial({ color: 0x8c6a4c })); this.room.add(lines);
     }
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(W + 0.5, 0.25, D + 0.5), new THREE.MeshStandardMaterial({ color: 0x2b2d42 })); slab.position.y = -0.126; slab.receiveShadow = true; this.room.add(slab);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(W + 0.5, 0.25, D + 0.5), new THREE.MeshStandardMaterial({ color: 0x2b2d42 })); slab.position.y = -0.14; slab.receiveShadow = true; this.room.add(slab);
     const back = new THREE.Mesh(new THREE.BoxGeometry(W + 0.14, H, 0.14), wm(W / 1.2, H / 1.2)); back.position.set(-0.07 * 0, H / 2, -D / 2 - 0.07); back.receiveShadow = true; back.castShadow = true; this.room.add(back);
     const left = new THREE.Mesh(new THREE.BoxGeometry(0.14, H, D), wm(D / 1.2, H / 1.2)); left.position.set(-W / 2 - 0.07, H / 2, 0); left.receiveShadow = true; left.castShadow = true; this.room.add(left);
     const trimM = new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.6 });
@@ -261,6 +287,8 @@ export class HouseView extends Stage {
     const win = new THREE.Group(); const frame = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 0.06), trimM); const glass = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.96, 0.07), new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x6fb7e8, emissiveIntensity: 0.5, roughness: 0.2 }));
     const cross1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.96, 0.08), trimM), cross2 = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.05, 0.08), trimM);
     win.add(frame, glass, cross1, cross2); win.position.set(W * 0.22, 1.6, -D / 2 + 0.03); this.room.add(win);
+    const sun = this.scene.userData.sun;
+    if (sun && sun.castShadow) { const R = Math.hypot(W, D) / 2 + 2, c = sun.shadow.camera; c.left = c.bottom = -R; c.right = c.top = R; c.far = R * 6; c.updateProjectionMatrix(); sun.position.set(0.4, 0.75, 0.5).normalize().multiplyScalar(R * 2); sun.shadow.mapSize.set(4096, 4096); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     if (resize) {
       const target = new THREE.Vector3(0, 0.8, 0), dist = Math.max(W, D) * 1.35 + 2.5;
       this.controls.target.copy(target); this.controls.maxDistance = dist * 2.2;

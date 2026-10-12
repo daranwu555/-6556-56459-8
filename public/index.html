@@ -124,6 +124,7 @@ input.bad{outline:2px solid var(--bad)}
       <div class="brand">🏮 小屋大亨</div>
       <div class="stat" id="sName"></div>
       <div class="stat">💰 <span id="sMoney"></span></div>
+      <div class="stat" title="讀書／打電腦／看電視可獲得知識點；答題時可用來刪除錯誤選項">🧠 <span id="sKnow">0</span></div>
       <div class="stat">⭐ Lv.<span id="sLv"></span> <span class="badge" id="sNovice"></span></div>
       <div class="grow"></div>
       <span class="mut">🟢 線上 <span id="sOnline">1</span> 人</span>
@@ -148,6 +149,8 @@ input.bad{outline:2px solid var(--bad)}
         <span class="mut grow" id="houseHint"></span>
       </div>
       <div class="stage3d" id="room3d"></div>
+      <div class="row hidden" id="furnMenu" style="margin-top:8px"></div>
+      <div class="card hidden" id="restBar" style="margin-top:8px"></div>
       <div class="mut" style="margin-top:4px">🚶 點地板空白處讓角色走過去，或用 W A S D／方向鍵操控；點家具可拿起來重新擺放。</div>
       <div class="mut" style="margin-top:6px">拖曳旋轉視角、滾輪縮放；選好家具後點地板擺放，綠色=可放、紅色=重疊；點已擺放的家具可拿起來移動。</div>
     </div>
@@ -236,6 +239,7 @@ input.bad{outline:2px solid var(--bad)}
       <div class="mut" style="margin-top:8px"><span id="qNo"></span> · <span id="qCat"></span> <span id="qDiff"></span></div>
       <div id="qtext"></div>
       <div class="opts" id="opts"></div>
+      <div class="row" id="hintRow" style="margin-top:8px"><span class="mut">🧠 知識點：</span><button id="hCut">刪去一個錯誤選項（30）</button><button id="hSolve">直接答對（60）</button></div>
       <div id="qEvents" class="combo" style="margin-top:10px;min-height:24px"></div>
       <button id="qReport" class="hidden" style="font-size:12px">🚩 回報此題有誤</button>
     </div>

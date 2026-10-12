@@ -38,6 +38,10 @@ function onMsg(m) {
     case 'online': $('#sOnline').textContent = m.n; break;
     case 'err': toast('⚠️ ' + m.msg); break;
     case 'toast': toast(m.msg); break;
+    case 'sleepRes': toast(`😴 睡得很好！+${m.exp} 經驗${m.levelUps ? '，🎉升級！' : ''}（今天還能睡 ${m.left} 次）`); break;
+    case 'standRes': toast(m.exp ? `🌿 休息了約 ${m.mins} 分鐘，+${m.exp} 經驗` : `🌿 休息了約 ${m.mins} 分鐘（滿 1 小時才會加 1 經驗，時間會累積）`); break;
+    case 'studyRes': toast(`${{ read: '📖 讀書', game: '🎮 打電腦', tv: '📺 看電視' }[m.act]}　🧠 知識點 +${m.gain}`); break;
+    case 'hintRes': hintRes(m); break;
     case 'kicked': localStorage.removeItem('hq_token'); toast('此帳號已在其他地方登入'); setTimeout(() => location.reload(), 1200); break;
     case 'queue': showQuiz('wait'); $('#waitTxt').textContent = m.code ? `邀請碼：${m.code}　請把這組碼告訴朋友（${Math.round(m.ms / 1000)} 秒內有效）` : '等待其他玩家加入…'; break;
     case 'queueCancelled': showQuiz('lobby'); if (m.msg) toast(m.msg); break;
@@ -73,6 +77,7 @@ function renderAll() {
   if (!P) return;
   $('#sName').textContent = (P.gender === 'm' ? '👨 ' : '👩 ') + P.name;
   $('#sMoney').textContent = P.money.toLocaleString();
+  $('#sKnow').textContent = P.knowledge || 0; if (typeof renderHint === 'function' && !$('#quizPlay').classList.contains('hidden')) renderHint();
   $('#sLv').textContent = P.level;
   $('#sNovice').textContent = P.novice ? '新手' : '老手';
   $('#sNovice').classList.toggle('vet', !P.novice);
@@ -119,7 +124,7 @@ let houseStage = null, work = { wall: null, carpet: null, placed: [] }, hold = n
 const cloneHouse = (h) => JSON.parse(JSON.stringify(h));
 function ensureHouseStage() {
   if (houseStage) return;
-  houseStage = new HouseView($('#room3d'), { interactive: true, onPlace, onPick, onInvalid: () => toast('這裡放不下，換個位置吧') });
+  houseStage = new HouseView($('#room3d'), { interactive: true, onPlace, onPick, onPose, onLeavePose, onInvalid: () => toast('這裡放不下，換個位置吧') });
   window.__house = houseStage;
   houseStage.setItems(CAT.items);
   window.addEventListener('keydown', (e) => { if (view !== 'house' || !hold) return; if (e.key === 'r' || e.key === 'R') rotateHold(); if (e.key === 'Escape') cancelHold(); });
@@ -135,14 +140,43 @@ function onPlace(pl) {
   if (hold.orig || left <= 0) { hold = null; houseStage.setHold(null); } else hold.orig = null;
   renderHouse();
 }
-function onPick(i) { const it = work.placed.splice(i, 1)[0]; setHold({ id: it.id, rot: it.rot, orig: it }); }
+function onPick(i) { // 點家具：先出現選單（拿起移動／坐下／睡覺）
+  const p = work.placed[i], it = I(p.id), m = $('#furnMenu'); m.classList.remove('hidden'); m.innerHTML = `<b>${esc(it.name)}</b>`;
+  const add = (txt, fn) => { const b = document.createElement('button'); b.textContent = txt; b.onclick = () => { m.classList.add('hidden'); fn(); }; m.appendChild(b); };
+  if (it.cat === 'table') add('🪑 坐下休息', () => { if (P.sit) return toast('你已經坐著了'); houseStage.act(i, 'sit'); });
+  if (it.cat === 'bed' || it.cat === 'mattress') add('😴 睡覺（+20 經驗，每天 2 次）', () => { const left = CFG.sleepPerDay - ((P.sleepDay && P.sleepDay.d === new Date().toISOString().slice(0, 10)) ? P.sleepDay.n : 0); if (left <= 0) return toast(`今天已經睡了 ${CFG.sleepPerDay} 次，明天再睡吧`); if (P.sit) return toast('請先站起來'); houseStage.act(i, 'sleep'); });
+  add('✋ 拿起來移動', () => { const q = work.placed.splice(i, 1)[0]; setHold({ id: q.id, rot: q.rot, orig: q }); });
+  add('✖ 關閉', () => {});
+}
+let sleepTimer = null;
+function onPose(kind) {
+  if (kind === 'sit') send({ t: 'sit' });
+  else if (kind === 'sleep') { send({ t: 'sleep' }); clearTimeout(sleepTimer); sleepTimer = setTimeout(() => houseStage && houseStage.leavePose(), 3500); }
+}
+function onLeavePose(kind) { if (kind === 'sit' && P && P.sit) send({ t: 'stand' }); }
+function renderRest() {
+  const bar = $('#restBar'); if (!P.sit) { bar.classList.add('hidden'); return; }
+  const has = { read: work.placed.concat(P.house.placed).some((x) => x.id.startsWith('decor_ancient_')), game: P.house.placed.some((x) => I(x.id).cat === 'pc'), tv: P.house.placed.some((x) => I(x.id).cat === 'tv') };
+  const mins = Math.floor((Date.now() - P.sit.since) * ((P.city && P.city.timeScale) || 1) / 60000);
+  bar.classList.remove('hidden');
+  bar.innerHTML = `<b>🪑 休息中</b>　已坐 ${mins} 分鐘（每滿 1 小時 +1 經驗；站起來時結算）　🧠 知識點 ${P.knowledge || 0}
+    <div class="row" style="margin-top:8px">
+      <button data-a="read" ${has.read ? '' : 'disabled'} title="需要家裡有書">📖 讀書 +${CFG.knowledgeGain}</button>
+      <button data-a="game" ${has.game ? '' : 'disabled'} title="需要家裡有電腦">🎮 打電腦遊戲 +${CFG.knowledgeGain}</button>
+      <button data-a="tv" ${has.tv ? '' : 'disabled'} title="需要家裡有電視">📺 看電視 +${CFG.knowledgeGain}</button>
+      <button class="pri" id="stand">🚶 站起來</button></div>
+    <div class="mut">${has.read ? '' : '讀書需要書（商店「古風」擺飾）；'}${has.game ? '' : '打遊戲需要電腦；'}${has.tv ? '' : '看電視需要電視；'}每次動作之間要隔 ${CFG.studyCooldownMs / 1000} 秒。知識點 30＝答題時刪 1 個錯誤選項、60＝直接答對。</div>`;
+  bar.querySelectorAll('button[data-a]').forEach((b) => b.onclick = () => send({ t: 'study', act: b.dataset.a }));
+  $('#stand').onclick = () => { houseStage.leavePose(); };
+}
 $('#hRot').onclick = rotateHold; $('#hCancel').onclick = cancelHold;
 $('#hRemove').onclick = () => { if (hold && hold.orig) { sendHouse(); setHold(null); } else toast('先點擊房間裡的家具，再按收回'); };
 
 function renderHouse() {
   ensureHouseStage();
   if (!hold) work = cloneHouse(P.house);
-  houseStage.setData({ cols: P.cols, rows: P.rows, house: work, worn: P.worn, gender: P.gender });
+  houseStage.setData({ cols: P.cols, rows: P.rows, house: work, worn: P.worn, gender: P.gender }).then(() => { if (P.sit && houseStage.pose.mode !== 'sit' && !houseStage.action) { if (!houseStage.restoreSit()) send({ t: 'stand' }); } });
+  renderRest();
   $('#houseHint').textContent = (hold ? `拿著：${I(hold.id).name}（旋轉 ${hold.rot * 90}°）` : '房屋 Lv.' + P.houseLv + `（${P.cols}×${P.rows} 公尺）`) + '　' + styleLine({ house: work, worn: P.worn });
 
   const next = CFG.houseLevels[P.houseLv];
@@ -233,7 +267,7 @@ function renderWare() {
 // ───── 商店 ─────
 function renderShop() {
   $('#shopInfo').innerHTML = `<h3>🏪 商店</h3><p class="mut">這裡販售家具、牆壁、地毯與建材。每件商品都有「持有上限」，賣出或用掉（擴建消耗建材）後可再購買。服飾只在「更衣室」販售。</p>`;
-  chips($('#shopStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles).filter(([k]) => k !== 'ancient')], shopStyle, (k) => { shopStyle = k; renderShop(); });
+  chips($('#shopStyle'), [['all', '全部風格'], ...Object.entries(CAT.styles)], shopStyle, (k) => { shopStyle = k; renderShop(); });
   chips($('#shopCat'), [['all', '全部類別'], ...Object.entries(CAT.cats).filter(([, v]) => v.kind !== 'wear').map(([k, v]) => [k, v.label])], shopCat, (k) => { shopCat = k; renderShop(); });
   const tray = $('#shopTray'); tray.innerHTML = '';
   Object.values(CAT.items).filter((it) => !it.starter && it.kind !== 'wear' && (shopStyle === 'all' || it.style === shopStyle) && (shopCat === 'all' || it.cat === shopCat)).forEach((it) => {
@@ -276,7 +310,18 @@ function matchStart(m) {
   $('#qtext').textContent = '配對成功！準備開始…'; $('#opts').innerHTML = ''; $('#qNo').textContent = ''; $('#qCat').textContent = '';
   $('#timeBar').style.width = '100%'; $('#qReport').classList.add('hidden');
 }
+let hintQ = null;
+function hintRes(m) {
+  if (!hintQ) return;
+  if (m.kind === 'cut') m.removed.forEach((i) => { const b = $('#opts').children[i]; if (b) { b.disabled = true; b.classList.add('cut'); b.style.opacity = '.3'; b.style.textDecoration = 'line-through'; } });
+  else if (m.kind === 'solve') { answered = true; const b = $('#opts').children[m.correct]; if (b) b.classList.add('picked'); $('#opts').querySelectorAll('button').forEach((x) => x.disabled = true); }
+  renderHint();
+}
+function renderHint() { const k = (P && P.knowledge) || 0, a = !answered; $('#hCut').disabled = !a || k < 30; $('#hSolve').disabled = !a || k < 60; $('#hintRow .mut').textContent = `🧠 知識點：${k}　`; }
+$('#hCut').onclick = () => send({ t: 'hint', kind: 'cut' });
+$('#hSolve').onclick = () => send({ t: 'hint', kind: 'solve' });
 function showQuestion(m) {
+  hintQ = m;
   answered = false; curQ = m.id;
   $('#qNo').textContent = `第 ${m.i + 1} / ${m.total} 題`; $('#qCat').textContent = m.cat;
   $('#qDiff').textContent = ''; $('#qReport').classList.add('hidden');
@@ -284,14 +329,15 @@ function showQuestion(m) {
   const box = $('#opts'); box.innerHTML = '';
   m.opts.forEach((o, i) => {
     const b = document.createElement('button'); b.className = 'opt'; b.textContent = ['A', 'B', 'C', 'D'][i] + '. ' + o;
-    b.onclick = () => { if (answered) return; answered = true; b.classList.add('picked'); box.querySelectorAll('button').forEach((x) => x.disabled = true); send({ t: 'answer', choice: i }); };
+    b.onclick = () => { if (answered) return; answered = true; b.classList.add('picked'); box.querySelectorAll('button').forEach((x) => x.disabled = true); send({ t: 'answer', choice: i }); renderHint(); };
     box.appendChild(b);
   });
   qEnd = Date.now() + m.ms; clearInterval(qTimer);
   qTimer = setInterval(() => { const r = Math.max(0, qEnd - Date.now()); $('#timeBar').style.width = (r / m.ms * 100) + '%'; if (!r) clearInterval(qTimer); }, 100);
+  renderHint();
 }
 function showReveal(m) {
-  clearInterval(qTimer);
+  clearInterval(qTimer); answered = true; renderHint();
   $('#opts').querySelectorAll('button').forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); else if (i === m.you.choice) b.classList.add('wrong'); });
   $('#meScore').textContent = m.you.correct; $('#opScore').textContent = m.opp.correct;
   $('#meCombo').textContent = m.you.streak > 1 ? `🔥 ${m.you.streak} 連擊` : '';
@@ -420,13 +466,13 @@ function renderMiniCards() {
   Object.entries(M.mine).forEach(([k, L]) => add('💣 踩地雷', L.name, L.fee, L.reward, () => startMg({ t: 'mgStart', game: 'mine', level: k })));
   add('🀄 記憶翻牌', M.memory.name, M.memory.fee, M.memory.reward, () => startMg({ t: 'mgStart', game: 'memory' }));
   add('🔢 猜數字 1A2B', M.num.name, M.num.fee, M.num.reward, () => startMg({ t: 'mgStart', game: 'num' }));
-  add('🍉 切水果', M.fruit.name, M.fruit.fee, `${M.fruit.reward} 元＋${M.fruit.exp} 經驗`, () => startMg({ t: 'mgStart', game: 'fruit' }));
+  Object.entries(M.fruit.levels).forEach(([k, L]) => add(`🍉 切水果・${L.name}`, ['水果較少，適合練習', '水果變多、炸彈變多', '滿天水果與炸彈，考驗手速與判斷'][['easy', 'mid', 'hard'].indexOf(k)], M.fruit.fee, `${M.fruit.reward} 元＋${L.exp} 經驗`, () => startMg({ t: 'mgStart', game: 'fruit', level: k })));
   add('🧟 三格打殭屍', M.zombie.name, M.zombie.fee, `${M.zombie.reward} 元＋${M.zombie.exp} 經驗`, () => startMg({ t: 'mgStart', game: 'zombie' }));
 }
 function startMini(m) {
   mgInfo = m; if (mgStop) mgStop();
   $('#quizLobby').classList.add('hidden'); $('#mgLobby').classList.add('hidden'); $('#mgPlay').classList.remove('hidden'); $('#mgMsg').textContent = '';
-  const title = { mine: `💣 踩地雷　${CFG.minigames.mine[m.level] ? CFG.minigames.mine[m.level].name : ''}`, memory: '🀄 記憶翻牌', num: '🔢 猜數字 1A2B', fruit: '🍉 切水果', zombie: '🧟 三格打殭屍' }[m.game]; $('#mgTitle').textContent = title;
+  const title = { mine: `💣 踩地雷　${CFG.minigames.mine[m.level] ? CFG.minigames.mine[m.level].name : ''}`, memory: '🀄 記憶翻牌', num: '🔢 猜數字 1A2B', fruit: `🍉 切水果・${(CFG.minigames.fruit.levels[m.level] || {}).name || ''}`, zombie: '🧟 三格打殭屍' }[m.game]; $('#mgTitle').textContent = title;
   const host = $('#mgHost'), done = (log, win, secret) => { send({ t: 'mgEnd', log }); mgInfo.secret = secret; };
   if (m.game === 'mine') mgStop = playMine(host, m, done); else if (m.game === 'memory') mgStop = playMemory(host, m, done); else if (m.game === 'fruit') mgStop = playFruit(host, m, done); else if (m.game === 'zombie') mgStop = playZombie(host, m, done); else mgStop = playNum(host, m, done);
 }

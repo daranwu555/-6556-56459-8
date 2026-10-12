@@ -31,20 +31,25 @@ const CFG = {
   sellRate: 0.35,
   renameCost: 100000,        // 改名費用（取名免費，改名要錢）
   // 房屋等級：cols × rows 為房間大小（公尺）；第 n 項 = 擴建到等級 n+1 的條件
-  houseLevels: [ // 房間大小（公尺）。比舊版大 1.5 倍
-    { cols: 9, rows: 6 },
-    { cols: 10.5, rows: 6, money: 300, mats: { material_wood: 5, material_brick: 5 } },
-    { cols: 10.5, rows: 7.5, money: 500, mats: { material_wood: 8, material_brick: 8, material_cement: 5 } },
-    { cols: 12, rows: 7.5, money: 800, mats: { material_brick: 10, material_cement: 10, material_glass: 5 } },
-    { cols: 13.5, rows: 7.5, money: 1200, mats: { material_wood: 10, material_cement: 10, material_glass: 10, material_steel: 10 } },
-    { cols: 15, rows: 9, money: 2000, mats: { material_brick: 20, material_cement: 20, material_glass: 15, material_steel: 20 } },
+  houseLevels: [ // 房間大小（公尺）。比最初版大 3 倍（長寬各 ×3）
+    { cols: 18, rows: 12 },
+    { cols: 21, rows: 12, money: 300, mats: { material_wood: 5, material_brick: 5 } },
+    { cols: 21, rows: 15, money: 500, mats: { material_wood: 8, material_brick: 8, material_cement: 5 } },
+    { cols: 24, rows: 15, money: 800, mats: { material_brick: 10, material_cement: 10, material_glass: 5 } },
+    { cols: 27, rows: 15, money: 1200, mats: { material_wood: 10, material_cement: 10, material_glass: 10, material_steel: 10 } },
+    { cols: 30, rows: 18, money: 2000, mats: { material_brick: 20, material_cement: 20, material_glass: 15, material_steel: 20 } },
   ],
+  sleepExp: 20, sleepPerDay: 2,          // 睡覺：+20 經驗，每天 2 次
+  restCapHours: 12,                      // 坐著休息最多計 12 小時；每 1 小時 +1 經驗
+  studyCooldownMs: 30000, knowledgeGain: 5, knowledgeMax: 999,
+  hintCutCost: 30, hintSolveCost: 60,    // 知識點：30 刪 1 個錯誤選項、60 直接答對
   seenKeep: 300,             // 每位玩家記住最近見過的題數，盡量不重複
   // 城市：地塊、建築、管理者
   city: { cols: 5, rows: 4, homeLot: 7, landBase: 300, landMul: 1.35, capHours: 12, poolSize: 4, poolTtlMs: 6 * 3600e3, poolRefreshCost: 100, maxLv: 5, upgradeMul: 0.8, incomeMul: 1.6, demolishRefund: 0.4, hireRate: 0.06 },
 };
 const tScale = () => Number(env.timeScale ? env.timeScale() : 1) || 1; // 遊戲時間倍率（測試用：1 分鐘 = 1 小時）
 const expNeed = (lv) => Math.round(CFG.firstLevelExp * Math.pow(CFG.levelMul, lv - 1));
+const placedOf = (p, cat) => p.house.placed.some((x) => ITEMS[x.id] && ITEMS[x.id].cat === cat);
 const gridOf = (p) => CFG.houseLevels[p.houseLv - 1];
 
   // ───────── 資料（記憶體為主、定時寫回 storage）─────────
@@ -58,6 +63,7 @@ const gridOf = (p) => CFG.houseLevels[p.houseLv - 1];
     if (p.house.placed.some((x) => !Number.isFinite(x.z))) p.house.placed = []; // 舊版格子資料
     if (!p.city) p.city = newCity();                                              // 舊版存檔沒有城市
     if (!p.mgDay) p.mgDay = { d: '' };
+    if (p.knowledge === undefined) Object.assign(p, { knowledge: 0, sleepDay: { d: '', n: 0 }, sit: null, restCarry: 0, lastStudy: 0 });
     players.set(r.username, p); byToken.set(p.token, p); byPid.set(p.pid, p);
   }
   for (const r of env.storage.qstats()) qstats.set(r.id, { n: r.n, c: r.c });
@@ -86,6 +92,7 @@ function newProfile(username, password, name, gender) {
     likes: 0, likedBy: [], seen: [], lastSeen: Date.now(),
     stats: { played: 0, wins: 0, bestCombo: 0 },
     city: newCity(), mgDay: { d: '' },
+    knowledge: 0, sleepDay: { d: '', n: 0 }, sit: null, restCarry: 0, lastStudy: 0,
   };
 }
 
@@ -233,7 +240,7 @@ function nextQuestion(room) {
   room.idx++;
   if (room.idx >= room.qs.length) return finishRoom(room);
   const q = room.qs[room.idx];
-  room.pl.forEach((p) => { p.choice = null; if (p.sess) { p.sess.qseen = p.sess.qseen || new Map(); p.sess.qseen.set(q.id, q); } });
+  room.pl.forEach((p) => { p.choice = null; p.cuts = []; if (p.sess) { p.sess.qseen = p.sess.qseen || new Map(); p.sess.qseen.set(q.id, q); } });
   room.open = true;
   room.pl.forEach((p) => send(p.sess, { t: 'q', i: room.idx, total: room.qs.length, id: q.id, cat: q.cat, q: q.q, opts: q.opts, ms: CFG.questionMs }));
   room.pl.forEach((p, i) => {
@@ -478,7 +485,7 @@ function handle(sess, m) {
     }
     // ───── 小遊戲 ─────
     case 'mgStart': {
-      const g = m.game, cfg = g === 'mine' ? MG.MINE_LEVELS[m.level] : g === 'memory' ? MG.MEMORY : g === 'num' ? MG.NUMGAME : g === 'fruit' ? MG.FRUIT : g === 'zombie' ? MG.ZOMBIE : null;
+      const g = m.game, cfg = g === 'mine' ? MG.MINE_LEVELS[m.level] : g === 'memory' ? MG.MEMORY : g === 'num' ? MG.NUMGAME : g === 'fruit' ? (MG.FRUIT_LEVELS[m.level] ? { ...MG.FRUIT, ...MG.FRUIT_LEVELS[m.level] } : null) : g === 'zombie' ? MG.ZOMBIE : null;
       if (!cfg) return err('未知的遊戲');
       if (p.money < cfg.fee) return err(`參加費需要 ${cfg.fee} 元`);
       p.money -= cfg.fee;
@@ -493,7 +500,7 @@ function handle(sess, m) {
       if (g.game === 'mine') { cfg = MG.MINE_LEVELS[g.level]; win = MG.verifyMine(g.seed, g.level, m.log).win; }
       else if (g.game === 'memory') { cfg = MG.MEMORY; win = MG.verifyMemory(g.seed, m.log).win; }
       else if (g.game === 'num') { cfg = MG.NUMGAME; win = MG.verifyNum(g.seed, m.log).win; }
-      else if (g.game === 'fruit') { cfg = MG.FRUIT; win = MG.verifyFruit(g.seed, m.log).win; }
+      else if (g.game === 'fruit') { win = MG.verifyFruit(g.seed, m.log, g.level).win; cfg = { ...MG.FRUIT, ...MG.FRUIT_LEVELS[g.level] }; }
       else { cfg = MG.ZOMBIE; win = MG.verifyZombie(g.seed, m.log).win; }
       const day = new Date().toISOString().slice(0, 10);
       if (!p.mgDay || p.mgDay.d !== day) p.mgDay = { d: day };
@@ -504,6 +511,52 @@ function handle(sess, m) {
         else { reward = cfg.reward; p.mgDay[g.game] = (p.mgDay[g.game] || 0) + 1; p.money += reward; if (cfg.exp) { exp = cfg.exp; ups = addExp(p, exp); } }
       }
       ok(); return send(sess, { t: 'mgResult', game: g.game, level: g.level, win, reward, exp, levelUps: ups, note, left: MG.DAILY_CAP - (p.mgDay[g.game] || 0), fee: cfg.fee });
+    }
+    // ───── 睡覺／坐下休息／讀書打電動看電視（知識點）─────
+    case 'sleep': {
+      if (p.sit) return err('請先站起來再睡覺');
+      if (!placedOf(p, 'bed')) return err('你的房子裡還沒有擺床');
+      const day = new Date().toISOString().slice(0, 10);
+      if (!p.sleepDay || p.sleepDay.d !== day) p.sleepDay = { d: day, n: 0 };
+      if (p.sleepDay.n >= CFG.sleepPerDay) return err(`今天已經睡了 ${CFG.sleepPerDay} 次，明天再睡吧`);
+      p.sleepDay.n++; const ups = addExp(p, CFG.sleepExp); ok();
+      return send(sess, { t: 'sleepRes', exp: CFG.sleepExp, levelUps: ups, left: CFG.sleepPerDay - p.sleepDay.n });
+    }
+    case 'sit': {
+      if (p.sit) return ok();
+      if (!placedOf(p, 'table')) return err('你的房子裡還沒有擺椅子或沙發');
+      p.sit = { since: Date.now() }; return ok();
+    }
+    case 'stand': {
+      if (!p.sit) return ok();
+      const el = Math.min(CFG.restCapHours * 3600e3, (Date.now() - p.sit.since) * tScale()), tot = (p.restCarry || 0) + el, exp = Math.floor(tot / 3600e3);
+      p.restCarry = tot - exp * 3600e3; p.sit = null; const ups = exp ? addExp(p, exp) : 0; ok();
+      return send(sess, { t: 'standRes', exp, levelUps: ups, mins: Math.round(el / 60e3) });
+    }
+    case 'study': {
+      if (!p.sit) return err('要先坐下才能讀書、打電動或看電視');
+      const need = { read: [(x) => x.id.startsWith('decor_ancient_'), '書（到商店買「線裝書堆」或「書架」擺在家裡）'], game: [(x) => ITEMS[x.id].cat === 'pc', '電腦'], tv: [(x) => ITEMS[x.id].cat === 'tv', '電視'] }[m.act];
+      if (!need) return err('未知的動作');
+      if (!p.house.placed.some((x) => ITEMS[x.id] && need[0](x))) return err(`房子裡要先擺好${need[1]}`);
+      const gap = CFG.studyCooldownMs / tScale(), wait = (p.lastStudy || 0) + gap - Date.now();
+      if (wait > 0) return err(`還要再等 ${Math.ceil(wait / 1000)} 秒`);
+      p.lastStudy = Date.now(); p.knowledge = Math.min(CFG.knowledgeMax, (p.knowledge || 0) + CFG.knowledgeGain); ok();
+      return send(sess, { t: 'studyRes', act: m.act, gain: CFG.knowledgeGain });
+    }
+    case 'hint': {
+      const room = sess.room; if (!room || !room.open) return;
+      const i = room.pl.findIndex((x) => x.sess === sess); if (i < 0) return; const pl = room.pl[i], q = room.qs[room.idx];
+      if (pl.choice !== null) return;
+      const cost = m.kind === 'solve' ? CFG.hintSolveCost : CFG.hintCutCost;
+      if ((p.knowledge || 0) < cost) return err(`知識點不足（需要 ${cost}，目前 ${p.knowledge || 0}）`);
+      if (m.kind === 'cut') {
+        const cand = [0, 1, 2, 3].filter((x) => x !== q.correct && !pl.cuts.includes(x));
+        if (cand.length <= 1) return err('這題不能再刪除了');
+        const r = cand[Math.floor(Math.random() * cand.length)]; pl.cuts.push(r); p.knowledge -= cost; ok();
+        return send(sess, { t: 'hintRes', kind: 'cut', removed: pl.cuts.slice() });
+      }
+      if (m.kind === 'solve') { p.knowledge -= cost; ok(); send(sess, { t: 'hintRes', kind: 'solve', correct: q.correct }); return answer(room, i, q.correct); }
+      return;
     }
     case 'board': return send(sess, { t: 'board', ...boardData(p) });
     case 'visit': {
@@ -555,7 +608,7 @@ function auth(sess, m) {
   send(sess, {
     t: 'welcome', token: p.token, p: publicProfile(p),
     catalog: { items: ITEMS, cats: CATS, styles: STYLES, buildings: BUILDINGS, specs: SPECS },
-    cfg: { city: CFG.city, minigames: { mine: MG.MINE_LEVELS, memory: MG.MEMORY, num: MG.NUMGAME, fruit: MG.FRUIT, zombie: MG.ZOMBIE, cap: MG.DAILY_CAP }, offline: !!env.offline, entryFee: CFG.entryFee, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, renameCost: CFG.renameCost, noviceLevel: CFG.noviceLevel, likeReward: CFG.likeReward, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
+    cfg: { city: CFG.city, minigames: { mine: MG.MINE_LEVELS, memory: MG.MEMORY, num: MG.NUMGAME, fruit: MG.FRUIT, zombie: MG.ZOMBIE, cap: MG.DAILY_CAP }, offline: !!env.offline, entryFee: CFG.entryFee, sleepExp: CFG.sleepExp, sleepPerDay: CFG.sleepPerDay, restCapHours: CFG.restCapHours, studyCooldownMs: CFG.studyCooldownMs, knowledgeGain: CFG.knowledgeGain, hintCutCost: CFG.hintCutCost, hintSolveCost: CFG.hintSolveCost, houseLevels: CFG.houseLevels, warehouse: CFG.warehouse, shopBuild: CFG.shopBuild, sellRate: CFG.sellRate, renameCost: CFG.renameCost, noviceLevel: CFG.noviceLevel, likeReward: CFG.likeReward, noviceMul: CFG.noviceMul, comboMul: CFG.comboMul, styleBonus: CFG.styleBonus },
   });
   broadcastOnline();
 }

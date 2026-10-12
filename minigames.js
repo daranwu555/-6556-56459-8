@@ -14,8 +14,14 @@ const MINE_LEVELS = {
 };
 const MEMORY = { pairs: 8, fee: 30, reward: 80, maxMoves: 24, minMs: 10000, name: '記憶翻牌（8 對，24 步內完成）' };
 const NUMGAME = { digits: 4, maxGuesses: 8, fee: 30, reward: 100, minMs: 4000, name: '猜數字 1A2B（8 次內猜中）' };
-const FRUIT = { fee: 30, reward: 300, exp: 50, seconds: 60, tickMs: 20, minMs: 50000, name: '切水果（限時 60 秒，積分贏過對手才算贏；切到炸彈就輸）' };
-const ZOMBIE = { fee: 30, reward: 150, exp: 30, seconds: 60, tickMs: 50, lives: 3, needKills: 95, minMs: 50000, name: '三格打殭屍（撐過 60 秒、擊倒 95 隻，3 條命）' };
+// 切水果三個等級：越高級，同時飛出的水果越多（經驗值每級 ×1.2）
+const FRUIT_LEVELS = {
+  easy: { name: '初級', dens: 1, extra: 0, bomb: 0, exp: 50, botBase: 150 },
+  mid: { name: '中級', dens: 1.4, extra: 0.3, bomb: 0.03, exp: 60, botBase: 270 },
+  hard: { name: '高級', dens: 1.9, extra: 0.5, bomb: 0.06, exp: 72, botBase: 380 },
+};
+const FRUIT = { fee: 30, reward: 300, exp: 50, seconds: 60, tickMs: 20, minMs: 50000, levels: FRUIT_LEVELS, name: '切水果（限時 60 秒，積分贏過對手才算贏；切到炸彈就輸；初／中／高級）' };
+const ZOMBIE = { fee: 30, reward: 150, exp: 30, seconds: 60, tickMs: 50, lives: 3, hitFrom: 0.5, needKills: 75, minMs: 50000, name: '三格打殭屍（殭屍走過一半才能點；亂點扣 1 條命；撐過 60 秒、擊倒 75 隻，3 條命）' };
 const DAILY_CAP = 5; // 每種小遊戲每天最多領 5 次獎勵
 
 // ── 踩地雷 ──
@@ -94,17 +100,17 @@ const FRUIT_TYPES = [
 ];
 const FW = 1000, FH = 1400, FR = 62, FG = 2.4 * 1000; // 半徑與重力（單位：場地座標）
 class FruitSim {
-  constructor(seed) { this.rnd = rng(seed); this.bot = 180 + Math.floor(rng(seed ^ 0x9e3779b9)() * 60); this.tick = 0; this.objs = []; this.score = 0; this.exploded = false; this.sliced = 0; this.next = 20; this.events = []; }
+  constructor(seed, level = 'easy') { this.L = FRUIT_LEVELS[level] || FRUIT_LEVELS.easy; this.rnd = rng(seed); this.bot = this.L.botBase + Math.floor(rng(seed ^ 0x9e3779b9)() * 60); this.tick = 0; this.objs = []; this.score = 0; this.exploded = false; this.sliced = 0; this.next = 20; this.events = []; }
   get done() { return this.exploded || this.tick >= FRUIT.seconds * 1000 / FRUIT.tickMs; }
   spawn() {
-    const t = this.tick * FRUIT.tickMs / 1000, bombP = 0.12 + 0.18 * (t / FRUIT.seconds), n = 1 + (this.rnd() < 0.5 + 0.3 * (t / FRUIT.seconds) ? 1 : 0) + (this.rnd() < 0.25 ? 1 : 0);
+    const t = this.tick * FRUIT.tickMs / 1000, bombP = 0.12 + this.L.bomb + 0.18 * (t / FRUIT.seconds), n = 1 + (this.rnd() < 0.5 + 0.3 * (t / FRUIT.seconds) ? 1 : 0) + (this.rnd() < 0.25 + this.L.extra ? 1 : 0) + (this.rnd() < this.L.extra ? 1 : 0);
     for (let i = 0; i < n; i++) {
       const bomb = this.rnd() < bombP; let type = null;
       if (!bomb) { let r = this.rnd() * FRUIT_TYPES.reduce((a, f) => a + f.w, 0); for (const f of FRUIT_TYPES) { if ((r -= f.w) < 0) { type = f; break; } } type = type || FRUIT_TYPES[0]; }
       const x = 140 + this.rnd() * 720, vx = (this.rnd() - 0.5) * 560, vy = -(bomb ? 1.95 : type.vy) * 1000 * (0.94 + this.rnd() * 0.12);
       this.objs.push({ id: this.nid = (this.nid || 0) + 1, x, y: FH + 70, vx, vy, bomb, type });
     }
-    const gap = 0.95 - 0.4 * (t / FRUIT.seconds); this.next = this.tick + Math.max(10, Math.round((gap * (0.8 + this.rnd() * 0.5)) * 1000 / FRUIT.tickMs));
+    const gap = (0.95 - 0.4 * (t / FRUIT.seconds)) / this.L.dens; this.next = this.tick + Math.max(10, Math.round((gap * (0.8 + this.rnd() * 0.5)) * 1000 / FRUIT.tickMs));
   }
   // slices：本 tick 的滑動線段 [x1,y1,x2,y2]
   step(slices = []) {
@@ -129,9 +135,9 @@ class FruitSim {
   }
   get win() { return !this.exploded && this.tick >= FRUIT.seconds * 1000 / FRUIT.tickMs && this.score > this.bot; }
 }
-function verifyFruit(seed, log) {
+function verifyFruit(seed, log, level = 'easy') {
   if (!Array.isArray(log) || log.length > 6000) return { win: false };
-  const g = new FruitSim(seed), by = new Map();
+  const g = new FruitSim(seed, level), by = new Map();
   for (const e of log) { if (!Array.isArray(e) || e.length !== 5 || e.some((v) => !Number.isFinite(v))) return { win: false }; const [t, ...sg] = e; if (!by.has(t)) by.set(t, []); by.get(t).push(sg); }
   const total = FRUIT.seconds * 1000 / FRUIT.tickMs;
   while (!g.done && g.tick < total) g.step(by.get(g.tick) || []);
@@ -151,8 +157,9 @@ class ZombieSim {
     for (const lane of taps) {
       if (this.cool > 0 || lane < 0 || lane > 2) continue; this.cool = 3;
       let tgt = null; for (const z of this.zs) if (z.lane === lane && (!tgt || z.pos > tgt.pos)) tgt = z;
-      this.events.push({ lane, hit: !!tgt, id: tgt && tgt.id });
-      if (tgt && --tgt.hp <= 0) { tgt.dead = true; this.kills++; }
+      if (!tgt || tgt.pos < ZOMBIE.hitFrom) { this.lives--; this.events.push({ lane, hit: false, wild: true }); continue; } // 亂點：這條通道沒有走過一半的殭屍 → 扣 1 條命
+      this.events.push({ lane, hit: true, id: tgt.id });
+      if (--tgt.hp <= 0) { tgt.dead = true; this.kills++; }
     }
     for (const z of this.zs) { if (z.dead) continue; z.pos += z.t.sp * (1 + 0.6 * (t / ZOMBIE.seconds)) * dt; if (z.pos >= 1) { z.dead = true; this.lives--; this.events.push({ breach: z.lane }); } }
     this.zs = this.zs.filter((z) => !z.dead);
@@ -173,4 +180,4 @@ function verifyZombie(seed, log) {
 }
 
 const GAMES = { mine: { levels: MINE_LEVELS }, memory: MEMORY, num: NUMGAME, fruit: FRUIT, zombie: ZOMBIE };
-module.exports = { rng, MINE_LEVELS, MEMORY, NUMGAME, FRUIT, ZOMBIE, FRUIT_TYPES, ZTYPES, FW, FH, FR, DAILY_CAP, GAMES, Mine, Memory, FruitSim, ZombieSim, memoryDeck, numSecret, judge, validGuess, verifyMine, verifyMemory, verifyNum, verifyFruit, verifyZombie };
+module.exports = { rng, MINE_LEVELS, MEMORY, NUMGAME, FRUIT, FRUIT_LEVELS, ZOMBIE, FRUIT_TYPES, ZTYPES, FW, FH, FR, DAILY_CAP, GAMES, Mine, Memory, FruitSim, ZombieSim, memoryDeck, numSecret, judge, validGuess, verifyMine, verifyMemory, verifyNum, verifyFruit, verifyZombie };
