@@ -1,5 +1,10 @@
-import { HouseView, DressView, CityView, hydrateThumbs, assetUrl } from './gfx.js';
+import { HouseView, DressView, CityView, hydrateThumbs, assetUrl, QUALITY, setQuality } from './gfx.js';
 import { playMine, playMemory, playNum, playFruit, playZombie } from './mini.js';
+import * as FX from './fx.js';
+FX.init();
+{ const qb = document.getElementById('qualBtn'); if (qb) { qb.textContent = `畫質：${QUALITY === 'high' ? '高' : '省電'}`; qb.onclick = () => setQuality(QUALITY === 'high' ? 'low' : 'high'); } }
+const bootT0 = Date.now(); const bootDone = () => setTimeout(() => { const b = document.getElementById('boot'); if (b) { b.classList.add('gone'); setTimeout(() => b.remove(), 700); } }, Math.max(0, 900 - (Date.now() - bootT0)));
+setTimeout(bootDone, 4000);
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let ws, P = null, CAT = null, CFG = null, gender = 'm', view = 'house', mode = 'login';
@@ -11,7 +16,7 @@ let reconnectTimer;
 function connect() {
   ws = window.__LocalSocket ? new window.__LocalSocket() : new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
   ws.onopen = () => {
-    $('#conn').textContent = '已連線 ✔';
+    $('#conn').textContent = '已連線 ✔'; bootDone();
     const tk = localStorage.getItem('hq_token');
     if (tk) ws.send(JSON.stringify({ t: 'hello', token: tk }));
   };
@@ -20,7 +25,7 @@ function connect() {
 }
 const send = (o) => ws && ws.readyState === 1 && ws.send(JSON.stringify(o));
 function toast(msg) {
-  const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden');
+  const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden'); FX.pop(t, 'fx-toast-re');
   clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 2600);
 }
 
@@ -38,9 +43,9 @@ function onMsg(m) {
     case 'online': $('#sOnline').textContent = m.n; break;
     case 'err': toast('⚠️ ' + m.msg); break;
     case 'toast': toast(m.msg); break;
-    case 'sleepRes': toast(`😴 睡得很好！+${m.exp} 經驗${m.levelUps ? '，🎉升級！' : ''}（今天還能睡 ${m.left} 次）`); break;
+    case 'sleepRes': if (houseStage) houseStage.emote('✨'); toast(`😴 睡得很好！+${m.exp} 經驗${m.levelUps ? '，🎉升級！' : ''}（今天還能睡 ${m.left} 次）`); break;
     case 'standRes': toast(m.exp ? `🌿 休息了約 ${m.mins} 分鐘，+${m.exp} 經驗` : `🌿 休息了約 ${m.mins} 分鐘（滿 1 小時才會加 1 經驗，時間會累積）`); break;
-    case 'studyRes': toast(`${{ read: '📖 讀書', game: '🎮 打電腦', tv: '📺 看電視' }[m.act]}　🧠 知識點 +${m.gain}`); break;
+    case 'studyRes': if (houseStage) houseStage.emote({ read: '📖', game: '🎮', tv: '📺' }[m.act]); toast(`${{ read: '📖 讀書', game: '🎮 打電腦', tv: '📺 看電視' }[m.act]}　🧠 知識點 +${m.gain}`); break;
     case 'hintRes': hintRes(m); break;
     case 'kicked': localStorage.removeItem('hq_token'); toast('此帳號已在其他地方登入'); setTimeout(() => location.reload(), 1200); break;
     case 'queue': showQuiz('wait'); $('#waitTxt').textContent = m.code ? `邀請碼：${m.code}　請把這組碼告訴朋友（${Math.round(m.ms / 1000)} 秒內有效）` : '等待其他玩家加入…'; break;
@@ -71,13 +76,22 @@ $('#gf').onclick = () => { gender = 'f'; $('#gf').classList.add('on'); $('#gm').
 $('#go').onclick = () => send({ t: mode, username: $('#uname').value, password: $('#pw').value, name: $('#nm').value, gender });
 $('#pw').onkeydown = (e) => { if (e.key === 'Enter') $('#go').click(); };
 
-document.querySelectorAll('nav button').forEach((b) => b.onclick = () => { view = b.dataset.v; if (view === 'social') send({ t: 'board' }); renderAll(); });
+document.querySelectorAll('nav button').forEach((b) => b.onclick = () => { if (view !== b.dataset.v) { const sec = $('#v-' + b.dataset.v); if (sec) { sec.classList.add('anim'); setTimeout(() => sec.classList.remove('anim'), 900); } } view = b.dataset.v; if (view === 'social') send({ t: 'board' }); renderAll(); });
 
 function renderAll() {
   if (!P) return;
   $('#sName').textContent = (P.gender === 'm' ? '👨 ' : '👩 ') + P.name;
-  $('#sMoney').textContent = P.money.toLocaleString();
-  $('#sKnow').textContent = P.knowledge || 0; if (typeof renderHint === 'function' && !$('#quizPlay').classList.contains('hidden')) renderHint();
+  const prev = renderAll.prev;
+  if (prev && prev.pid === P.pid) {
+    const dm = P.money - prev.money, dk = (P.knowledge || 0) - (prev.knowledge || 0), sm = $('#sMoney').parentElement;
+    if (dm) { FX.countUp($('#sMoney'), prev.money, P.money); FX.floatAt(sm, (dm > 0 ? '+' : '') + dm.toLocaleString(), dm > 0 ? '#ffe08a' : '#ff8a80'); if (dm > 0) FX.coinsTo([innerWidth / 2, innerHeight * 0.6], sm, Math.min(12, 3 + Math.round(Math.log10(dm + 1) * 3))); else FX.pop(sm); }
+    else $('#sMoney').textContent = P.money.toLocaleString();
+    if (dk) { FX.countUp($('#sKnow'), prev.knowledge || 0, P.knowledge || 0); FX.floatAt($('#sKnow').parentElement, (dk > 0 ? '+' : '') + dk + ' 🧠', dk > 0 ? '#bfe9ff' : '#ff8a80'); FX.pop($('#sKnow').parentElement); }
+    if (P.level > prev.level) setTimeout(() => FX.levelUp(P.level), 400);
+    else if (P.exp > prev.exp) FX.pop($('#expBar').parentElement);
+  } else $('#sMoney').textContent = P.money.toLocaleString();
+  renderAll.prev = { pid: P.pid, money: P.money, knowledge: P.knowledge || 0, level: P.level, exp: P.exp };
+  if (!prev || prev.pid !== P.pid) $('#sKnow').textContent = P.knowledge || 0; if (typeof renderHint === 'function' && !$('#quizPlay').classList.contains('hidden')) renderHint();
   $('#sLv').textContent = P.level;
   $('#sNovice').textContent = P.novice ? '新手' : '老手';
   $('#sNovice').classList.toggle('vet', !P.novice);
@@ -96,7 +110,8 @@ function renderAll() {
 
 // ───── 共用：物品 / 縮圖 ─────
 const I = (id) => CAT.items[id];
-const thumbImg = (it) => `<img data-thumb="${it.id}" class="${it.tex ? 'tx' : ''}" alt="${esc(it.name)}" ${it.tex ? `src="${assetUrl(it.tex)}"` : ''}>`;
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+const thumbImg = (it) => `<img data-thumb="${it.id}" class="${it.tex ? 'tx' : 'ld'}" alt="" src="${it.tex ? assetUrl(it.tex) : BLANK}">`;
 const tag = (it) => (it.style === 'none' ? '' : `<span class="tag ${it.style}">${CAT.styles[it.style]}</span>`);
 const hydrate = (el) => hydrateThumbs(el, ALLT);
 const wornN = (id) => Object.values(P.worn).filter((x) => x === id).length;
@@ -289,7 +304,7 @@ function renderLobby() {
   $('#mulHint').textContent = `等級 ≤ ${CFG.noviceLevel} 為新手，新手可以和任何人對戰；只有「新手遇到老手」時，新手的連答倍率才會提高。對戰電腦或雙方都是新手，一律 ×1.2。` + (P.styleBonus ? ` 你的房屋風格加成 +${P.styleBonus * 100}% ✨` : '');
   $('#qStat').textContent = `戰績：${P.stats.played} 場 / ${P.stats.wins} 勝　最高連擊 ${P.stats.bestCombo}`;
 }
-function showQuiz(which) { ['Lobby', 'Wait', 'Play', 'End'].forEach((n) => $('#quiz' + n).classList.toggle('hidden', n.toLowerCase() !== which)); }
+function showQuiz(which) { ['Lobby', 'Wait', 'Play', 'End'].forEach((n) => $('#quiz' + n).classList.toggle('hidden', n.toLowerCase() !== which)); const mg = $('#mgLobby'); if (mg && $('#mgPlay').classList.contains('hidden')) mg.classList.toggle('hidden', which !== 'lobby'); if (which !== 'lobby') { const el = $('#quiz' + which[0].toUpperCase() + which.slice(1)); setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); } }
 let lastQuiz = null, lastMini = null; // 「再來一場」要重開剛剛選的玩法
 const startQuiz = (m) => { lastQuiz = m; send(m); };
 const startMg = (m) => { lastMini = m; send(m); };
@@ -303,6 +318,7 @@ $('#qReport').onclick = () => { if (curQ) { send({ t: 'report', qid: curQ, reaso
 
 function matchStart(m) {
   view = 'quiz'; renderAll(); showQuiz('play');
+  FX.versus(esc(P.name), esc(m.opp.name) + (m.opp.bot ? ' 🤖' : ''));
   $('#meName').innerHTML = (P.gender === 'm' ? '👨 ' : '👩 ') + esc(P.name) + `（你）<br><span class="badge ${m.mul < 1.5 ? 'vet' : ''}">combo ×${m.mul}</span>`;
   $('#opName').textContent = (m.opp.gender === 'm' ? '👨 ' : '👩 ') + m.opp.name + (m.opp.bot ? ' 🤖' : ` Lv.${m.opp.level}`);
   ['#meScore', '#opScore'].forEach((s) => $(s).textContent = '0');
@@ -333,7 +349,8 @@ function showQuestion(m) {
     box.appendChild(b);
   });
   qEnd = Date.now() + m.ms; clearInterval(qTimer);
-  qTimer = setInterval(() => { const r = Math.max(0, qEnd - Date.now()); $('#timeBar').style.width = (r / m.ms * 100) + '%'; if (!r) clearInterval(qTimer); }, 100);
+  $('#timeBar').classList.remove('warn');
+  qTimer = setInterval(() => { const r = Math.max(0, qEnd - Date.now()); $('#timeBar').style.width = (r / m.ms * 100) + '%'; $('#timeBar').classList.toggle('warn', r < 4000); if (!r) clearInterval(qTimer); }, 100);
   renderHint();
 }
 function showReveal(m) {
@@ -341,6 +358,10 @@ function showReveal(m) {
   $('#opts').querySelectorAll('button').forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); else if (i === m.you.choice) b.classList.add('wrong'); });
   $('#meScore').textContent = m.you.correct; $('#opScore').textContent = m.opp.correct;
   $('#meCombo').textContent = m.you.streak > 1 ? `🔥 ${m.you.streak} 連擊` : '';
+  const ob = $('#opts').children;
+  if (m.you.ok) { FX.burstAt(ob[m.correct], { n: 34, colors: ['#bff5e4', '#4f9a86', '#ffe9a8'] }); FX.pop($('#meScore')); if (m.you.streak > 1) { FX.pop($('#meCombo'), 'fx-combo'); FX.floatAt($('#qtext'), `${m.you.streak} 連擊！`, '#ffb347', 34 + Math.min(20, m.you.streak * 2)); } }
+  else if (m.you.choice !== null) FX.shake($('#opts'));
+  if (m.opp.ok) FX.pop($('#opScore'));
   $('#opCombo').textContent = m.opp.streak > 1 ? `🔥 ${m.opp.streak} 連擊` : '';
   $('#meMoney').textContent = `目前可得 💰${m.you.money}　✨${m.you.exp} 經驗`;
   $('#opState').textContent = m.opp.choice === null ? '對手未作答' : m.opp.ok ? '對手答對 ✔' : '對手答錯 ✘';
@@ -356,6 +377,8 @@ function showEnd(m) {
     <p>最高連擊 ${m.you.bestStreak}（combo ×${m.you.mul}）　獲得 💰 <b>${m.you.money}</b>${m.you.styleBonus ? `（含風格加成 +${m.you.styleBonus * 100}%）` : ''}　✨ <b>${m.you.exp}</b> 經驗　${m.you.levelUps ? '🎉 升級 ' + m.you.levelUps + ' 級！' : ''}</p>
     <p class="mut">扣除參加費 50 元，淨收益 <b style="color:${m.net >= 0 ? 'var(--ok)' : 'var(--bad)'}">${m.net >= 0 ? '+' : ''}${m.net}</b> 元</p>
     <button class="pri" id="again">再來一場</button> <button id="toHouse">回到房屋</button>`;
+  $('#quizEnd').classList.toggle('fx-win', m.result === 'win');
+  if (m.result === 'win') { FX.fireworks(5); setTimeout(() => FX.confetti(), 250); } else if (m.result === 'lose') FX.shake($('#quizEnd'));
   $('#again').onclick = () => { if (lastQuiz) { $('#again').disabled = true; send(lastQuiz); } else showQuiz('lobby'); };
   $('#toHouse').onclick = () => { view = 'house'; showQuiz('lobby'); renderAll(); };
 }
@@ -478,7 +501,8 @@ function startMini(m) {
 }
 function mgResult(r) {
   const back = '<div style="margin-top:10px"><button class="pri" id="mgAgain">再來一場</button> <button id="mgBack">返回遊樂場</button></div>';
-  $('#mgMsg').innerHTML = (r.win ? `🎉 挑戰成功！${r.reward ? `獎金 +${r.reward} 元${r.exp ? `、✨+${r.exp} 經驗` : ''}${r.levelUps ? `、🎉升 ${r.levelUps} 級` : ''}（今天還可領 ${r.left} 次）` : ''}` : '😢 挑戰失敗') + (r.note ? `<div class="mut">${r.note}</div>` : '') + (mgInfo && mgInfo.secret && !r.win ? `<div class="mut">密碼是 ${mgInfo.secret}</div>` : '') + back;
+  if (r.win) { FX.confetti(110); FX.fireworks(3); } else FX.shake($('#mgPlay'));
+  $('#mgMsg').innerHTML = (r.win ? `<span class="win">🎉 挑戰成功！</span>${r.reward ? `獎金 +${r.reward} 元${r.exp ? `、✨+${r.exp} 經驗` : ''}${r.levelUps ? `、🎉升 ${r.levelUps} 級` : ''}（今天還可領 ${r.left} 次）` : ''}` : '😢 挑戰失敗') + (r.note ? `<div class="mut">${r.note}</div>` : '') + (mgInfo && mgInfo.secret && !r.win ? `<div class="mut">密碼是 ${mgInfo.secret}</div>` : '') + back;
   $('#mgAgain').onclick = () => { if (lastMini) send(lastMini); };
   $('#mgBack').onclick = () => { if (mgStop) mgStop(); mgStop = null; $('#mgPlay').classList.add('hidden'); $('#quizLobby').classList.remove('hidden'); $('#mgLobby').classList.remove('hidden'); };
 }

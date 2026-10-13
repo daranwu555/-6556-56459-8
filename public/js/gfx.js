@@ -2,6 +2,26 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/jsm/GLTFLoader.js';
 import { OrbitControls } from 'three/jsm/OrbitControls.js';
+import { RoomEnvironment } from 'three/jsm/RoomEnvironment.js';
+
+// 畫質：高（環境反射、柔和陰影、粒子）／低（給較舊的手機）。存在瀏覽器裡。
+let q0 = null; try { q0 = localStorage.getItem('hq_quality'); } catch (e) {}
+export const QUALITY = q0 || ((typeof matchMedia === 'function' && matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 500) ? 'low' : 'high');
+export function setQuality(q) { try { localStorage.setItem('hq_quality', q); } catch (e) {} location.reload(); }
+const HIGH = QUALITY === 'high';
+// 小工具：發光貼圖、emoji 貼圖精靈
+let glowTex = null;
+function glow() {
+  if (glowTex) return glowTex; const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,240,200,.75)'); g.addColorStop(1, 'rgba(255,220,150,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  glowTex = new THREE.CanvasTexture(c); glowTex.colorSpace = THREE.SRGBColorSpace; return glowTex;
+}
+const emojiTex = new Map();
+function emojiSprite(e, size = 0.4, color) {
+  if (!emojiTex.has(e + color)) { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = color ? 'bold 96px serif' : '96px serif'; if (color) { x.lineWidth = 10; x.strokeStyle = '#2a1500'; x.strokeText(e, 64, 70); x.fillStyle = color; } x.fillText(e, 64, 70); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; emojiTex.set(e + color, t); }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: emojiTex.get(e + color), transparent: true, depthWrite: false })); sp.scale.setScalar(size); return sp;
+}
+const easeBack = (k) => { const c = 1.70158; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
 
 const loader = new GLTFLoader();
 // 單機版會把模型／材質內嵌成 data URL（window.__EMBED），這裡統一轉換路徑
@@ -29,10 +49,10 @@ function texture(url, rx, ry) {
 }
 
 function addLights(scene, shadows) {
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7f78, 1.45));
-  const d = new THREE.DirectionalLight(0xfff4e0, 1.6);
+  scene.add(new THREE.HemisphereLight(0xfff2de, 0x5a4a40, HIGH ? 0.75 : 1.45));
+  const d = new THREE.DirectionalLight(0xffe2b8, HIGH ? 2.3 : 1.6);
   d.position.set(6, 11, 7);
-  if (shadows) { d.castShadow = true; d.shadow.mapSize.set(2048, 2048); const c = d.shadow.camera; c.left = -9; c.right = 9; c.top = 9; c.bottom = -9; c.near = 1; c.far = 40; d.shadow.bias = -0.0004; d.shadow.normalBias = 0.03; }
+  if (shadows) { d.castShadow = true; d.shadow.mapSize.set(HIGH ? 2048 : 1024, HIGH ? 2048 : 1024); d.shadow.radius = 4; const c = d.shadow.camera; c.left = -9; c.right = 9; c.top = 9; c.bottom = -9; c.near = 1; c.far = 40; d.shadow.bias = -0.0004; d.shadow.normalBias = 0.03; }
   scene.add(d); scene.userData.sun = d;
 }
 
@@ -44,9 +64,12 @@ class Stage {
   constructor(el, { shadows = false } = {}) {
     this.el = el;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: false });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    if (shadows) { this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; }
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, HIGH ? 2 : 1));
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = HIGH ? 1.0 : 1.2;
+    if (shadows) { this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = HIGH ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap; }
     this.scene = new THREE.Scene();
+    if (HIGH) { const pm = new THREE.PMREMGenerator(this.renderer); this.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; this.scene.environmentIntensity = 0.35; pm.dispose(); }
+    this.anims = []; this.clock = performance.now();
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.5, 200);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true; this.controls.dampingFactor = 0.08; this.controls.enablePan = false;
@@ -68,10 +91,31 @@ class Stage {
     if (this.el.clientWidth !== this.w || this.el.clientHeight !== this.h) this.resize();
     if (!this.w) return;
     this.controls.update();
+    const now = performance.now(), dt = Math.min(0.1, (now - this.clock) / 1000); this.clock = now;
+    if (this.anims.length) this.anims = this.anims.filter((f) => f(dt, now) !== false);
     this.onTick && this.onTick();
     this.renderer.render(this.scene, this.camera);
   }
 }
+
+// 共用演出：升起淡出的精靈、擴散光環、閃光粒子
+Stage.prototype.floatSprite = function (sp, pos, { rise = 0.9, ms = 1600, parent = this.scene, sway = 0.1 } = {}) {
+  sp.position.copy(pos); parent.add(sp); const t0 = performance.now(), s0 = sp.scale.x;
+  this.anims.push((dt, now) => { const k = (now - t0) / ms; if (k >= 1) { parent.remove(sp); sp.material.dispose(); return false; } sp.position.y = pos.y + rise * k; sp.position.x = pos.x + Math.sin(k * 6) * sway; sp.material.opacity = k < 0.15 ? k / 0.15 : 1 - Math.max(0, (k - 0.6) / 0.4); sp.scale.setScalar(s0 * (0.6 + 0.4 * Math.min(1, k * 4))); });
+};
+Stage.prototype.ringFx = function (pos, { color = 0xffd76a, r = 1, ms = 700, parent = this.scene } = {}) {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  m.rotation.x = -Math.PI / 2; m.position.copy(pos); parent.add(m); const t0 = performance.now();
+  this.anims.push((dt, now) => { const k = (now - t0) / ms; if (k >= 1) { parent.remove(m); m.geometry.dispose(); m.material.dispose(); return false; } m.scale.setScalar(0.05 + r * (1 - Math.pow(1 - k, 3))); m.material.opacity = 0.9 * (1 - k); });
+};
+Stage.prototype.sparkle = function (pos, { n = 16, spread = 0.6, color = 0xffe08a, up = 1.2, ms = 1100, parent = this.scene } = {}) {
+  if (!HIGH) n = Math.ceil(n / 3);
+  for (let i = 0; i < n; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow(), color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); sp.scale.setScalar(0.12 + Math.random() * 0.16);
+    const v = new THREE.Vector3((Math.random() - 0.5) * spread * 2, up * (0.4 + Math.random()), (Math.random() - 0.5) * spread * 2); sp.position.copy(pos); parent.add(sp); const t0 = performance.now(), d = ms * (0.6 + Math.random() * 0.6);
+    this.anims.push((dt, now) => { const k = (now - t0) / d; if (k >= 1) { parent.remove(sp); sp.material.dispose(); return false; } sp.position.addScaledVector(v, dt); v.y -= dt * 0.8; sp.material.opacity = 1 - k; });
+  }
+};
 
 // ───── 角色 ─────
 export async function buildAvatar(gender, worn, items) {
@@ -91,14 +135,33 @@ export async function buildAvatar(gender, worn, items) {
 export class DressView extends Stage {
   constructor(el) {
     super(el, { shadows: true });
-    const floor = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.2, 0.12, 48), new THREE.MeshStandardMaterial({ color: 0x4a4f7a, roughness: 0.6 }));
-    floor.position.y = -0.06; floor.receiveShadow = true; this.scene.add(floor);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.025, 8, 64), new THREE.MeshStandardMaterial({ color: 0xffcd75, emissive: 0x6a4a00 }));
+    // 舞台：黑檀圓台＋金邊＋腳下光暈、頂上聚光、緩緩上升的金色光點
+    const floor = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.22, 0.14, 64), new THREE.MeshStandardMaterial({ color: 0x2a2230, roughness: 0.35, metalness: 0.3 }));
+    floor.position.y = -0.07; floor.receiveShadow = true; this.scene.add(floor);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.03, 12, 96), new THREE.MeshStandardMaterial({ color: 0xffd27a, emissive: 0x8a5a00, emissiveIntensity: 1.2, metalness: 0.8, roughness: 0.25 }));
     ring.rotation.x = Math.PI / 2; this.scene.add(ring);
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.012, 8, 96), ring.material); ring2.rotation.x = Math.PI / 2; ring2.position.y = 0.002; this.scene.add(ring2);
+    const halo = new THREE.Mesh(new THREE.CircleGeometry(1.6, 64), new THREE.MeshBasicMaterial({ map: glow(), color: 0xffc46a, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+    halo.rotation.x = -Math.PI / 2; halo.position.y = 0.004; this.scene.add(halo);
+    const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 1.3, 4.2, 48, 1, true), new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      uniforms: { t: { value: 0 } }, vertexShader: 'varying float vy; varying vec2 vu; void main(){ vy = position.y; vu = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform float t; varying float vy; varying vec2 vu; void main(){ float a = smoothstep(-2.1, 2.1, vy); a = (1.0 - a) * 0.10 + a * 0.02; a *= 0.8 + 0.2 * sin(vu.x * 40.0 + t * 1.5); gl_FragColor = vec4(1.0, 0.86, 0.6, a); }' }));
+    cone.position.y = 2.1; this.scene.add(cone); this.cone = cone;
+    const N = HIGH ? 90 : 30, pos = new Float32Array(N * 3); this.motes = [];
+    for (let i = 0; i < N; i++) { const a = Math.random() * 6.283, r = 0.5 + Math.random() * 0.7; this.motes.push({ a, r, y: Math.random() * 2.6, v: 0.15 + Math.random() * 0.35 }); }
+    const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.moteMesh = new THREE.Points(pg, new THREE.PointsMaterial({ map: glow(), color: 0xffd98a, size: 0.07, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); this.scene.add(this.moteMesh);
+    const back = new THREE.Mesh(new THREE.SphereGeometry(14, 32, 16), new THREE.MeshBasicMaterial({ side: THREE.BackSide, color: 0x1a1420 })); this.scene.add(back);
     this.holder = new THREE.Group(); this.scene.add(this.holder);
     this.controls.autoRotate = true; this.controls.autoRotateSpeed = 1.6;
     this.controls.minPolarAngle = 0.6; this.controls.maxPolarAngle = 1.6; this.controls.minDistance = 1.2; this.controls.maxDistance = 6;
-    this.focus('full'); this.token = 0;
+    this.focus('full'); this.token = 0; this.first = true;
+  }
+  onTick() {
+    const t = performance.now() / 1000, arr = this.moteMesh.geometry.attributes.position;
+    this.motes.forEach((m, i) => { m.y += m.v * 0.016; if (m.y > 2.8) m.y = 0; m.a += 0.003; arr.setXYZ(i, Math.cos(m.a) * m.r, m.y, Math.sin(m.a) * m.r); });
+    arr.needsUpdate = true; this.cone.material.uniforms.t.value = t;
+    if (this.holder.children[0]) this.holder.children[0].scale.y = 1 + Math.sin(t * 2.2) * 0.008;
   }
   focus(mode) {
     const T = { full: [0.75, 4.4, 1.0], upper: [1.0, 2.7, 0.8], head: [1.18, 2.0, 0.5], feet: [0.15, 2.0, 0.6] }[mode] || [0.75, 4.4, 1.0];
@@ -111,6 +174,11 @@ export class DressView extends Stage {
     const av = await buildAvatar(gender, worn, items);
     if (tk !== this.token) return;
     this.holder.clear(); this.holder.add(av);
+    if (this.first) { this.first = false; return; }
+    // 換裝演出：光環擴散＋金色光點＋角色彈一下
+    this.ringFx(new THREE.Vector3(0, 0.02, 0), { r: 1.6, ms: 800 }); this.ringFx(new THREE.Vector3(0, 0.9, 0), { r: 1.1, ms: 600, color: 0xfff1c4 });
+    this.sparkle(new THREE.Vector3(0, 0.6, 0), { n: 28, spread: 0.5, up: 1.6 });
+    const t0 = performance.now(); this.anims.push((dt, now) => { const k = Math.min(1, (now - t0) / 500); av.scale.setScalar(0.9 + 0.1 * easeBack(k)); return k < 1; });
   }
 }
 
@@ -147,11 +215,19 @@ export class HouseView extends Stage {
     if (tk !== this.token) return;
     this.furn.clear();
     const beds = d.house.placed.filter((p) => this.items[p.id].cat === 'bed');
+    const keys = new Set(), fresh = [];
     for (const x of loaded) {
       if (!x) continue;
       const root = new THREE.Group(); root.add(x.o); root.userData.index = x.i;
       root.position.set(x.p.x, this.elev(x.p, beds), x.p.z); root.rotation.y = x.p.rot * Math.PI / 2;
       this.furn.add(root);
+      const k = `${x.p.id}@${x.p.x},${x.p.z},${x.p.rot}`; keys.add(k); if (this.prevKeys && !this.prevKeys.has(k)) fresh.push(root);
+    }
+    this.prevKeys = keys;
+    for (const r of fresh) { // 新擺上的家具：彈出＋落地光環＋光點
+      const t0 = performance.now(); r.scale.setScalar(0.01);
+      this.anims.push((dt, now) => { const k = Math.min(1, (now - t0) / 480); r.scale.setScalar(Math.max(0.01, easeBack(k))); return k < 1; });
+      this.ringFx(new THREE.Vector3(r.position.x, 0.02, r.position.z), { r: 1.4, ms: 650 }); this.sparkle(new THREE.Vector3(r.position.x, 0.3, r.position.z), { n: 14, spread: 0.5 });
     }
     // 角色（站在房間前方角落）
     const av = await buildAvatar(d.gender, d.worn, this.items);
@@ -226,10 +302,15 @@ export class HouseView extends Stage {
     if (this.action && !(this.path && this.path.length)) { const a = this.action; this.action = null; this.enterPose(a); }
     let dh = this.heading - this.pivot.rotation.y; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); this.pivot.rotation.y += dh * Math.min(1, dt * 12);
     const mv = this.moving > 0; if (mv) this.moving--;
+    if (this.dustMesh) { const a = this.dustMesh.geometry.attributes.position, t = now / 1000; this.dust.forEach((d, i) => { a.setXYZ(i, d.x + Math.sin(t * 0.3 + d.p) * 0.25, d.y + Math.sin(t * 0.21 + d.p * 2) * 0.18, d.z + Math.cos(t * 0.25 + d.p) * 0.25); }); a.needsUpdate = true; }
+    if (this.shaft) this.shaft.material.uniforms.t.value = now / 1000;
+    if (this.pose.mode === 'sleep' && now - (this.lastZ || 0) > 1100) { this.lastZ = now; this.floatSprite(emojiSprite('💤', 0.38), new THREE.Vector3(this.pos.x + 0.2, 1.0, this.pos.z - 0.3), { rise: 1.1, ms: 2200 }); }
+    if (this.pose.mode === 'sit' && now - (this.lastS || 0) > 2600) { this.lastS = now; this.sparkle(new THREE.Vector3(this.pos.x, 1.2, this.pos.z), { n: 5, spread: 0.3, up: 0.6, color: 0xbff5e4 }); }
     const pm = this.pose.mode, b = this.body;
     if (pm === 'sit') { b.position.set(0, -0.3, 0); b.rotation.set(0, 0, 0); }
     else if (pm === 'sleep') { b.position.set(0, 0.62 + Math.sin(now / 900) * 0.008, 0.85); b.rotation.set(-Math.PI / 2, 0, 0); }
     else { b.position.set(0, mv ? Math.abs(Math.sin(now / 110)) * 0.05 : 0, 0); b.rotation.set(0, 0, mv ? Math.sin(now / 110) * 0.05 : 0); }
+    b.scale.set(1, pm === 'stand' && !mv ? 1 + Math.sin(now / 520) * 0.01 : 1, 1); // 待機呼吸
   }
   // ── 坐下／睡覺：先走到家具旁，再進入姿勢 ──
   get pose() { return this._pose || (this._pose = { mode: 'stand' }); }
@@ -243,6 +324,7 @@ export class HouseView extends Stage {
     this.pose.mode = a.kind; this.pose.stand = a.stand; this.pos = { x: a.x, z: a.z }; this.heading = a.heading; this.pivot.rotation.y = a.heading; this.path = [];
     this.avatar.position.set(a.x, 0, a.z); this.opt.onPose && this.opt.onPose(a.kind);
   }
+  emote(e) { if (!this.pos) return; this.floatSprite(emojiSprite(e, 0.5), new THREE.Vector3(this.pos.x, 1.9, this.pos.z), { rise: 0.7, ms: 1800 }); this.sparkle(new THREE.Vector3(this.pos.x, 1.6, this.pos.z), { n: 10, spread: 0.3, up: 0.8 }); }
   restoreSit() { // 重新整理頁面後，如果伺服器說還在休息，就直接坐回第一張椅子
     const i = this.data.house.placed.findIndex((p) => this.items[p.id] && this.items[p.id].cat === 'table'); if (i < 0 || this.pose.mode === 'sit') return !!(i >= 0);
     const p = this.data.house.placed[i]; this.enterPose({ kind: 'sit', x: p.x, z: p.z, heading: p.rot * Math.PI / 2, stand: this.nearestFree(p.x, p.z + 0.9) }); return true;
@@ -271,8 +353,8 @@ export class HouseView extends Stage {
     this.room.clear();
     const W = d.cols, D = d.rows, H = WALL_H;
     const wallTex = d.house.wall ? this.items[d.house.wall].tex : null, carpTex = d.house.carpet ? this.items[d.house.carpet].tex : null;
-    const wm = (rx, ry) => (wallTex ? new THREE.MeshStandardMaterial({ map: texture(wallTex, rx, ry), roughness: 0.9 }) : new THREE.MeshStandardMaterial({ color: 0xe9e4da, roughness: 0.95 }));
-    const floorMat = carpTex ? new THREE.MeshStandardMaterial({ map: texture(carpTex, W / 1.2, D / 1.2), roughness: 1 }) : new THREE.MeshStandardMaterial({ color: 0xb08968, roughness: 0.8 });
+    const wm = (rx, ry) => (wallTex ? new THREE.MeshStandardMaterial({ map: texture(wallTex, rx, ry), roughness: 0.9 }) : new THREE.MeshStandardMaterial({ color: 0xe2d4ba, roughness: 0.92 }));
+    const floorMat = carpTex ? new THREE.MeshStandardMaterial({ map: texture(carpTex, W / 1.2, D / 1.2), roughness: 1 }) : new THREE.MeshStandardMaterial({ color: 0x9c6a43, roughness: 0.55 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), floorMat); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; floor.name = 'floor'; this.room.add(floor);
     if (!carpTex) { // 木地板線條
       const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(Array.from({ length: Math.floor(D / 0.3) + 1 }, (_, i) => [new THREE.Vector3(-W / 2, 0.002, -D / 2 + i * 0.3), new THREE.Vector3(W / 2, 0.002, -D / 2 + i * 0.3)]).flat()), new THREE.LineBasicMaterial({ color: 0x8c6a4c })); this.room.add(lines);
@@ -287,6 +369,17 @@ export class HouseView extends Stage {
     const win = new THREE.Group(); const frame = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 0.06), trimM); const glass = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.96, 0.07), new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x6fb7e8, emissiveIntensity: 0.5, roughness: 0.2 }));
     const cross1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.96, 0.08), trimM), cross2 = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.05, 0.08), trimM);
     win.add(frame, glass, cross1, cross2); win.position.set(W * 0.22, 1.6, -D / 2 + 0.03); this.room.add(win);
+    // 窗外斜射進來的光束＋空氣中的浮塵（只在高畫質）
+    if (HIGH) {
+      const shaft = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 3.4), new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { t: { value: 0 } },
+        vertexShader: 'varying vec2 vu; void main(){ vu = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+        fragmentShader: 'uniform float t; varying vec2 vu; void main(){ float e = smoothstep(0.0,0.25,vu.x) * smoothstep(1.0,0.75,vu.x); float a = e * mix(0.02, 0.16, vu.y) * (0.85 + 0.15 * sin(t * 0.7 + vu.x * 6.0)); gl_FragColor = vec4(1.0, 0.92, 0.72, a); }' }));
+      shaft.position.set(W * 0.22, 1.25, -D / 2 + 1.25); shaft.rotation.x = -0.75; this.room.add(shaft); this.shaft = shaft;
+      const N = Math.min(260, Math.round(W * D * 0.9)), arr = new Float32Array(N * 3); this.dust = [];
+      for (let i = 0; i < N; i++) this.dust.push({ x: (Math.random() - 0.5) * W, y: Math.random() * 2.4, z: (Math.random() - 0.5) * D, p: Math.random() * 6.283 });
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      this.dustMesh = new THREE.Points(g, new THREE.PointsMaterial({ map: glow(), color: 0xfff0c8, size: 0.05, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending })); this.room.add(this.dustMesh);
+    }
     const sun = this.scene.userData.sun;
     if (sun && sun.castShadow) { const R = Math.hypot(W, D) / 2 + 2, c = sun.shadow.camera; c.left = c.bottom = -R; c.right = c.top = R; c.far = R * 6; c.updateProjectionMatrix(); sun.position.set(0.4, 0.75, 0.5).normalize().multiplyScalar(R * 2); sun.shadow.mapSize.set(4096, 4096); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     if (resize) {
@@ -340,7 +433,7 @@ export class HouseView extends Stage {
     const hits = this.ray.intersectObjects(this.furn.children, true);
     if (hits.length) { let o = hits[0].object; while (o && o.userData.index === undefined) o = o.parent; if (o) { this.opt.onPick && this.opt.onPick(o.userData.index); return; } }
     const fl = this.room.children.find((c) => c.name === 'floor'), fh = fl && this.ray.intersectObject(fl)[0];
-    if (fh && this.opt.walk !== false) this.walkTo(fh.point.x, fh.point.z); // 點空地：走過去
+    if (fh && this.opt.walk !== false) { this.walkTo(fh.point.x, fh.point.z); this.ringFx(new THREE.Vector3(fh.point.x, 0.02, fh.point.z), { r: 0.45, ms: 600, color: 0x9ff0d8 }); } // 點空地：走過去
   }
 }
 
@@ -349,8 +442,8 @@ let thumbR, thumbScene, thumbCam;
 const thumbCache = new Map(); let chain = Promise.resolve();
 async function renderThumb(url) {
   if (!thumbR) {
-    thumbR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); thumbR.setSize(176, 176); thumbR.setPixelRatio(1);
-    thumbScene = new THREE.Scene(); addLights(thumbScene, false); thumbCam = new THREE.PerspectiveCamera(32, 1, 0.05, 50);
+    thumbR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); thumbR.setSize(176, 176); thumbR.setPixelRatio(1); thumbR.toneMapping = THREE.ACESFilmicToneMapping; thumbR.toneMappingExposure = HIGH ? 1.05 : 1.2;
+    thumbScene = new THREE.Scene(); addLights(thumbScene, false); if (HIGH) { const pm = new THREE.PMREMGenerator(thumbR); thumbScene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; thumbScene.environmentIntensity = 0.45; pm.dispose(); } thumbCam = new THREE.PerspectiveCamera(32, 1, 0.05, 50);
   }
   const o = await instance(url); thumbScene.add(o);
   const box = new THREE.Box3().setFromObject(o), sph = box.getBoundingSphere(new THREE.Sphere());
@@ -367,7 +460,7 @@ export function thumb(it) {
   return thumbCache.get(it.id);
 }
 export function hydrateThumbs(root, items) {
-  root.querySelectorAll('img[data-thumb]').forEach((img) => { const it = items[img.dataset.thumb]; if (it) thumb(it).then((src) => { if (src) img.src = src; }); });
+  root.querySelectorAll('img[data-thumb]').forEach((img) => { const it = items[img.dataset.thumb]; if (it) thumb(it).then((src) => { if (src) { img.src = src; img.classList.remove('ld'); img.classList.add('in'); } }); });
 }
 
 // ───── 城市 ─────
@@ -378,7 +471,12 @@ export class CityView extends Stage {
     this.opt = opt; this.token = 0; this.sel = -1; this.beacons = []; this.bmap = {};
     this.root = new THREE.Group(); this.scene.add(this.root);
     this.controls.minPolarAngle = 0.25; this.controls.maxPolarAngle = 1.2; this.controls.minDistance = 8; this.controls.maxDistance = 48;
-    this.scene.fog = new THREE.Fog(0xcfe3d8, 60, 120);
+    this.scene.fog = new THREE.Fog(0xd8e6dc, 55, 125);
+    { const c = document.createElement('canvas'); c.width = 4; c.height = 256; const x = c.getContext('2d'), gr = x.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#8fb8d8'); gr.addColorStop(0.55, '#d8e6dc'); gr.addColorStop(1, '#f2e6c8'); x.fillStyle = gr; x.fillRect(0, 0, 4, 256); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; this.scene.background = t; }
+    // 飄過天空的雲
+    this.clouds = new THREE.Group(); this.scene.add(this.clouds);
+    const cm = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.92, emissive: 0x666666 });
+    for (let i = 0; i < (HIGH ? 9 : 4); i++) { const c = new THREE.Group(); for (let k = 0; k < 5; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(1 + Math.random() * 1.2, 14, 10), cm); m.position.set(k * 1.4 - 2.8, Math.random() * 0.6, (Math.random() - 0.5) * 1.5); m.scale.y = 0.6; c.add(m); } c.userData.a = (i / (HIGH ? 9 : 4)) * Math.PI * 2 + Math.random() * 0.4; c.userData.r = 42 + Math.random() * 14; c.userData.y = 7 + Math.random() * 6; c.scale.setScalar(1.6 + Math.random()); c.userData.v = 0.01 + Math.random() * 0.012; this.clouds.add(c); }
     const dom = this.renderer.domElement; let down = null;
     dom.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
     dom.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 6) this.click(e); down = null; });
@@ -395,7 +493,20 @@ export class CityView extends Stage {
     const dash = mat(0xf2e9c8);
     for (let c = 0; c <= cols; c++) for (let k = 0; k < this.D / 1.6; k++) { const d = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.01, 0.7), dash); d.position.set(-this.W / 2 + ROAD / 2 + c * (LOT + ROAD), 0.035, -this.D / 2 + 0.6 + k * 1.6); g.add(d); }
     for (let r = 0; r <= rows; r++) for (let k = 0; k < this.W / 1.6; k++) { const d = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.01, 0.1), dash); d.position.set(-this.W / 2 + 0.6 + k * 1.6, 0.035, -this.D / 2 + ROAD / 2 + r * (LOT + ROAD)); g.add(d); }
-    this.beacons = []; const jobs = [];
+    // 景觀：行道樹、路燈、遠山（每次重建都一樣，用固定亂數）
+    { let sd = 7; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+      const trunkG = new THREE.CylinderGeometry(0.08, 0.12, 0.8, 6), leafG = new THREE.ConeGeometry(0.7, 1.8, 8), leafG2 = new THREE.SphereGeometry(0.75, 10, 8);
+      const spots = []; for (let k = 0; k < (HIGH ? 70 : 30); k++) { const side = k % 4, u = R() - 0.5, off = 1.6 + R() * 6; const px = side < 2 ? u * (this.W + 10) : (side === 2 ? -1 : 1) * (this.W / 2 + off); const pz = side < 2 ? (side === 0 ? -1 : 1) * (this.D / 2 + off) : u * (this.D + 10); spots.push([px, pz, 0.7 + R() * 0.7, R() < 0.5]); }
+      const tr = new THREE.InstancedMesh(trunkG, mat(0x6b4a2a), spots.length), lc = new THREE.InstancedMesh(leafG, mat(0x2f7a4a, 0.8), spots.length), ls = new THREE.InstancedMesh(leafG2, mat(0x4f9a5a, 0.8), spots.length);
+      const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), Pv = new THREE.Vector3();
+      spots.forEach(([px, pz, sc, cone], k) => { S.setScalar(sc); tr.setMatrixAt(k, M4.compose(Pv.set(px, 0.4 * sc, pz), Q, S)); const hide = new THREE.Vector3(0.0001, 0.0001, 0.0001); lc.setMatrixAt(k, M4.compose(Pv.set(px, 1.5 * sc, pz), Q, cone ? S : hide)); ls.setMatrixAt(k, M4.compose(Pv.set(px, 1.25 * sc, pz), Q, cone ? hide : S)); });
+      [tr, lc, ls].forEach((m) => { m.castShadow = true; m.receiveShadow = true; g.add(m); });
+      const lampM = new THREE.MeshStandardMaterial({ color: 0xffe2a0, emissive: 0xffb84a, emissiveIntensity: 1.6 });
+      for (let c = 0; c <= cols; c++) for (let r = 0; r <= rows; r++) { const lx = -this.W / 2 + ROAD / 2 + c * (LOT + ROAD) + 0.5, lz = -this.D / 2 + ROAD / 2 + r * (LOT + ROAD) + 0.5; const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.6, 6), mat(0x2b2d36)); post.position.set(lx, 0.8, lz); g.add(post); const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), lampM); bulb.position.set(lx, 1.65, lz); g.add(bulb); if (HIGH) { const gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow(), color: 0xffc46a, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })); gl.scale.setScalar(0.9); gl.position.copy(bulb.position); g.add(gl); } }
+      const mtn = new THREE.MeshStandardMaterial({ color: 0x7f9a90, roughness: 1, flatShading: true });
+      for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2 + R() * 0.2, rr = 62 + R() * 12, h = 8 + R() * 10; const m = new THREE.Mesh(new THREE.ConeGeometry(6 + R() * 6, h, 6), mtn); m.position.set(Math.cos(a) * rr, h / 2 - 0.5, Math.sin(a) * rr); m.rotation.y = R() * 3; g.add(m); }
+    }
+    this.beacons = []; const jobs = [], nowB = {}, rise = [];
     lots.forEach((l, i) => {
       const [x, z] = this.lotPos(i, cols);
       const slab = new THREE.Mesh(new THREE.BoxGeometry(LOT, 0.12, LOT), mat(l.b ? 0xd6d3c6 : l.owned ? 0x93cf80 : 0xb89c76)); slab.position.set(x, 0.06, z); slab.receiveShadow = true; slab.userData.lot = i; g.add(slab);
@@ -406,7 +517,8 @@ export class CityView extends Stage {
       } else if (!l.b) { // 空地：四根木樁與繩
         for (const [dx, dz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), mat(0x9a6a3a)); st.position.set(x + dx, 0.37, z + dz); g.add(st); }
       } else {
-        jobs.push(instance(assetUrl(this.bmap[l.b.type].model)).then((o) => { o.position.set(x, 0.12, z); o.userData.lot = i; g.add(o); }).catch(() => null));
+        const key = l.b.type + ':' + l.b.lv, isNew = this.prevB && this.prevB[i] !== key; nowB[i] = key;
+        jobs.push(instance(assetUrl(this.bmap[l.b.type].model)).then((o) => { o.position.set(x, 0.12, z); o.userData.lot = i; g.add(o); if (isNew) rise.push([o, x, z]); }).catch(() => null));
         for (let s = 0; s < l.b.lv; s++) { const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), new THREE.MeshStandardMaterial({ color: 0xffd34d, emissive: 0x8a6a00 })); star.position.set(x - 1.9 + s * 0.4, 0.4, z + 2.2); g.add(star); }
         const B = this.bmap[l.b.type];
         if (B.kind === 'biz' && !l.b.mgr) { // 沒有管理者：紅色警示
@@ -416,8 +528,13 @@ export class CityView extends Stage {
     });
     await Promise.all(jobs);
     if (tk !== this.token) return;
-    const first = !this.built; this.built = true;
+    const first = !this.built; this.built = true; this.prevB = nowB;
     this.root.clear(); this.root.add(g); this.group = g; this.markSel();
+    for (const [o, x, z] of rise) { // 新蓋／升級的建築：從地面長出來＋光環＋光點
+      const t0 = performance.now(); o.scale.set(1, 0.01, 1);
+      this.anims.push((dt, now) => { const k = Math.min(1, (now - t0) / 900); o.scale.set(1 + 0.06 * Math.sin(k * Math.PI), Math.max(0.01, easeBack(k)), 1 + 0.06 * Math.sin(k * Math.PI)); return k < 1; });
+      this.ringFx(new THREE.Vector3(x, 0.15, z), { r: 4.2, ms: 900 }); this.sparkle(new THREE.Vector3(x, 1.2, z), { n: 30, spread: 1.6, up: 3, ms: 1500 });
+    }
     if (first) { const d = Math.max(this.W, this.D) * 0.8; this.controls.target.set(0, 0, 0); this.camera.position.set(d * 0.2, d * 0.85, d * 0.95); this.controls.maxDistance = d * 2.2; }
   }
   select(i) { this.sel = i; this.markSel(); }
@@ -436,5 +553,5 @@ export class CityView extends Stage {
     const hits = this.ray.intersectObjects(this.group.children, true);
     for (const h of hits) { let o = h.object; while (o && o.userData.lot === undefined) o = o.parent; if (o) { this.opt.onLot && this.opt.onLot(o.userData.lot); return; } }
   }
-  onTick() { const t = (performance.now() - this.t0) / 1000; for (const b of this.beacons) b.scale.setScalar(0.85 + 0.25 * Math.sin(t * 4)); }
+  onTick() { const t = (performance.now() - this.t0) / 1000; for (const b of this.beacons) b.scale.setScalar(0.85 + 0.25 * Math.sin(t * 4)); for (const c of this.clouds.children) { c.userData.a += c.userData.v * 0.016; c.position.set(Math.cos(c.userData.a) * c.userData.r, c.userData.y, Math.sin(c.userData.a) * c.userData.r); c.lookAt(0, c.userData.y, 0); } if (this.ring) { this.ring.position.y = 0.25 + Math.sin(t * 3) * 0.08; this.ring.material.emissiveIntensity = 1 + Math.sin(t * 5) * 0.5; } }
 }

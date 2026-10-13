@@ -21,7 +21,7 @@ export function playMine(host, { seed, level }, onEnd) {
       else if (g.over && g.mine && g.mine[i]) { c.classList.add('o'); c.textContent = i === g.hit ? '💥' : '💣'; }
     });
   };
-  const finish = (win) => { if (ended) return; ended = true; clearInterval(timer); render(); board.classList.add('done'); setTimeout(() => onEnd(log, win), 900); };
+  const finish = (win) => { if (ended) return; ended = true; clearInterval(timer); render(); board.classList.add('done', win ? 'won' : 'lost'); setTimeout(() => onEnd(log, win), 900); };
   const act = (i, flag) => {
     if (ended) return; if (!t0) { t0 = Date.now(); timer = setInterval(() => { time.textContent = `⏱ ${Math.floor((Date.now() - t0) / 1000)} 秒`; }, 500); }
     if (flag) { g.toggleFlag(i); log.push(['f', i]); } else { g.reveal(i); log.push(['r', i]); }
