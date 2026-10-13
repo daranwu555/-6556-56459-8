@@ -151,12 +151,12 @@ class Model {
     const used = [...by.keys()];
     used.forEach((mi, k) => {
       const d = by.get(mi), mm = this.mats[mi];
-      const pos = new Float32Array(d.pos), nor = new Float32Array(d.nor), idx = new Uint32Array(d.idx);
+      const pos = new Float32Array(d.pos), nor = new Float32Array(d.nor), small = d.pos.length / 3 < 65536, idx = small ? new Uint16Array(d.idx.length + (d.idx.length % 2)) : new Uint32Array(d.idx); if (small) idx.set(d.idx);
       const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
       for (let i = 0; i < pos.length; i += 3) for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], pos[i + a]); mx[a] = Math.max(mx[a], pos[i + a]); }
       const aP = push(pos, 34962, 'VEC3', 5126, pos.length / 3, { min: mn, max: mx });
       const aN = push(nor, 34962, 'VEC3', 5126, nor.length / 3);
-      const aI = push(idx, 34963, 'SCALAR', 5125, idx.length);
+      const aI = push(idx, 34963, 'SCALAR', small ? 5123 : 5125, d.idx.length);
       const attributes = { POSITION: aP, NORMAL: aN };
       if (d.hasUv) attributes.TEXCOORD_0 = push(new Float32Array(d.uv), 34962, 'VEC2', 5126, d.uv.length / 2);
       meshes.push({ primitives: [{ attributes, indices: aI, material: k }] });
