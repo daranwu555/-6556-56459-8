@@ -1,7 +1,7 @@
 // 產生所有 3D 模型（.glb）與牆壁/地毯材質（.png）→ public/models、public/textures
 // 執行：node tools/make-assets.js
 const path = require('path');
-const { Model, box, cyl, sphere, torus, png, hexRgb } = require('./glb');
+const { Model, box, cyl, sphere, torus, png, hexRgb, lathe } = require('./glb');
 const CH = require('./character');
 const CITY = require('./buildings');
 const OUT = path.join(__dirname, '..', 'public');
@@ -121,13 +121,13 @@ const MAT = {
 
 // ═════════ 服飾（身體座標：腳底 y=0，面向 +z，身高約 1.75）═════════
 const W = {};
-function torso(m, c, o, opt = {}) {
-  const geo = cyl(0.185, 0.17, opt.h || 0.62, 20);
-  m.add(geo, m.mat(c, o), { p: [0, 0.84 + (opt.h || 0.62) / 2, 0], s: [1, 1, 0.68] });
+function torso(m, c, o, opt = {}) { // 上身：領口收在頸根（Q 版變形時不會被放大成翅膀），袖子沿著手臂
+  const top = Math.min(1.385, 0.84 + (opt.h || 0.62));
+  m.add(lathe([[0.172, 0.84], [0.176, 0.98], [0.182, 1.15], [0.19, 1.3], [0.188, top], [0.13, top + 0.016], [0.06, top + 0.028]], 36), m.mat(c, o), { s: [1, 1, 0.68] });
   for (const s of [-1, 1]) {
-    sp(m, c, 0.075, 0.075, 0.075, s * 0.205, 1.4, 0, o);
+    sp(m, c, 0.068, 0.062, 0.062, s * 0.2, 1.38, 0, o);
     const L = opt.sleeve ?? 0.42;
-    if (L > 0) m.add(cyl(0.062, 0.056, L, 14), m.mat(c, o), { p: [s * 0.255 + s * 0.02 * (L / 0.42), 1.39 - L / 2, 0], r: [0, 0, s * 0.07] });
+    if (L > 0) m.add(lathe([[0.064 + 0.006 * (L / 0.42), -L], [0.064, -L * 0.6], [0.061, -0.06], [0.06, 0]], 20), m.mat(c, o), { p: [s * 0.215, 1.39, 0], r: [0, 0, s * 0.065] });
   }
 }
 function pants(m, c, o, len = 0.78, wr = 0.09) {
@@ -183,12 +183,12 @@ W.suit_fun_1 = (m, p) => { torso(m, '#fff', matte); pants(m, '#fff', matte); sp(
 // ── 古風系列（武俠）：每個部位 5 件 ──
 // 頭飾
 W.head_ancient_0 = (m, p) => { cy(m, '#1f2a44', 0.13, 0.135, 0.1, 0, 1.68, 0, 0, matte, 18); bx(m, '#1f2a44', 0.05, 0.16, 0.012, 0, 1.68, -0.12, [0.25, 0, 0], matte); bx(m, p.metal, 0.12, 0.012, 0.012, 0, 1.69, 0.13, 0, shiny); };
-W.head_ancient_1 = (m, p) => { cy(m, p.metal, 0.05, 0.06, 0.07, 0, 1.78, -0.01, 0, shiny, 14); sp(m, '#4cb88a', 0.025, 0.025, 0.025, 0, 1.87, -0.01, shiny); bx(m, '#d9c27a', 0.014, 0.014, 0.4, 0, 1.76, -0.01, [0, 0, 0], shiny); cy(m, '#d9c27a', 0.006, 0.006, 0.3, 0.05, 1.7, -0.02, [0, 0, 1.5], shiny, 6); };
+W.head_ancient_1 = (m, p) => { sp(m, '#221d26', 0.042, 0.05, 0.04, 0, 1.765, -0.02, { m: 0.12, r: 0.36 }); cy(m, p.metal, 0.034, 0.04, 0.032, 0, 1.738, -0.02, 0, shiny, 20); cy(m, '#4cb88a', 0.016, 0.02, 0.024, 0, 1.768, 0.015, [0.3, 0, 0], shiny, 14); m.add(cyl(0.0045, 0.0045, 0.12, 8), m.mat('#d9c27a', shiny), { p: [0, 1.765, -0.02], r: [0, 0, Math.PI / 2] }); sp(m, '#4cb88a', 0.008, 0.008, 0.008, 0.062, 1.765, -0.02, shiny); sp(m, '#4cb88a', 0.008, 0.008, 0.008, -0.062, 1.765, -0.02, shiny); };
 W.head_ancient_2 = (m, p) => { cy(m, '#c9a05a', 0.01, 0.34, 0.12, 0, 1.68, 0, 0, matte, 24); to(m, '#7a5a2b', 0.33, 0.012, 0, 1.68, 0, [PI / 2, 0, 0], [1, 1, 1], matte); for (const s of [-1, 1]) bx(m, '#7a1f1f', 0.01, 0.2, 0.01, s * 0.12, 1.5, 0.08, 0, matte); };
 W.head_ancient_3 = (m, p) => { sp(m, '#f4f1ea', 0.125, 0.14, 0.04, 0, 1.6, 0.125, matte); for (const s of [-1, 1]) { sp(m, '#d33', 0.03, 0.012, 0.012, s * 0.05, 1.625, 0.162, matte); } sp(m, '#d33', 0.02, 0.03, 0.01, 0, 1.58, 0.168, matte); for (const s of [-1, 1]) sp(m, '#f4f1ea', 0.03, 0.06, 0.02, s * 0.07, 1.72, 0.09, matte); };
 W.head_ancient_4 = (m, p) => { cy(m, p.metal, 0.008, 0.008, 0.3, 0.1, 1.62, -0.03, [0, 0, 0.5], shiny, 6); for (let i = 0; i < 3; i++) sp(m, ['#ff5d7a', '#4cb88a', '#4da6ff'][i], 0.03, 0.03, 0.03, 0.14 + i * 0.015, 1.8 - i * 0.04, -0.02, shiny); sp(m, p.metal, 0.07, 0.04, 0.03, -0.1, 1.76, 0.03, shiny); };
 // 套裝
-W.suit_ancient_0 = (m, p) => { torso(m, '#f6f3ea', matte); pants(m, '#f6f3ea', matte); bx(m, '#2a3a5e', 0.37, 0.05, 0.24, 0, 1.0, 0, 0, matte); sp(m, '#f6f3ea', 0.15, 0.15, 0.15, 0, 1.6, -0.035, matte); bx(m, p.metal, 0.05, 0.05, 0.02, 0, 1.0, 0.125, 0, shiny); };
+W.suit_ancient_0 = (m, p) => { torso(m, '#f6f3ea', matte); pants(m, '#f6f3ea', matte); m.add(lathe([[0.07, 1.398], [0.054, 1.418], [0.05, 1.44]], 24), m.mat('#2a3a5e', matte)); for (const s of [-1, 1]) bx(m, '#2a3a5e', 0.03, 0.4, 0.01, s * 0.045, 1.0, 0.128, [0, 0, s * -0.4], matte); bx(m, '#2a3a5e', 0.37, 0.05, 0.24, 0, 0.96, 0, 0, matte); bx(m, p.metal, 0.05, 0.05, 0.02, 0, 0.96, 0.125, 0, shiny); };
 W.suit_ancient_1 = (m, p) => { const c = '#2b3d5e'; torso(m, c, matte, { sleeve: 0.5 }); cy(m, c, 0.19, 0.3, 0.8, 0, 0.1, 0, 0, matte, 24); bx(m, '#f6f3ea', 0.04, 0.6, 0.012, 0, 0.9, 0.128, 0, matte); bx(m, '#e0b54a', 0.37, 0.04, 0.24, 0, 1.0, 0, 0, matte); };
 W.suit_ancient_2 = (m, p) => { const c = '#7a1f1f'; torso(m, c, matte); pants(m, c, matte); bx(m, '#111', 0.37, 0.06, 0.24, 0, 1.0, 0, 0, matte); for (const y of [1.15, 1.3]) bx(m, p.metal, 0.3, 0.012, 0.012, 0, y, 0.13, 0, shiny); to(m, p.metal, 0.19, 0.012, 0, 1.4, 0, [PI / 2, 0, 0], [1, 1, 0.68], shiny); };
 W.suit_ancient_3 = (m, p) => { const c = '#c0392b'; torso(m, c, matte, { sleeve: 0.3 }); cy(m, c, 0.19, 0.42, 0.78, 0, 0.1, 0, 0, matte, 28); to(m, '#f6c3a0', 0.4, 0.015, 0, 0.12, 0, [PI / 2, 0, 0], [1, 1, 1], matte); bx(m, '#ffd93d', 0.37, 0.05, 0.24, 0, 1.0, 0, 0, matte); };
@@ -238,7 +238,7 @@ function run() {
   for (const [id, fn] of Object.entries(MAT)) { const m = new Model(); fn(m); m.save(path.join(OUT, 'models/material', id + '.glb')); n++; }
   for (const [id, fn] of Object.entries(CITY.B)) { const m = new Model(); fn(m); m.save(path.join(OUT, 'models/city', id + '.glb')); n++; }
   for (const g of ['m', 'f']) {
-    CH.body(g).save(path.join(OUT, `models/body_${g}.glb`), CH.chibi); CH.hairBase(g).save(path.join(OUT, `models/hair_${g}.glb`), CH.chibi); CH.hairTop(g).save(path.join(OUT, `models/hairtop_${g}.glb`), CH.chibi); n += 3;
+    CH.body(g).save(path.join(OUT, `models/body_${g}.glb`), CH.chibi); CH.hairBase(g).save(path.join(OUT, `models/hair_${g}.glb`), CH.chibiHair); CH.hairTop(g).save(path.join(OUT, `models/hairtop_${g}.glb`), CH.chibiHair); n += 3;
   }
   for (const [f, fn] of [['suit_start_m', CH.robeM], ['suit_start_f', CH.robeF], ['shoes_start_m', CH.bootsM], ['shoes_start_f', CH.shoesF]]) fn().save(path.join(OUT, `models/wear/${f}.glb`), CH.chibi);
   n += 4;

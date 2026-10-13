@@ -55,4 +55,4 @@ npm start          # 預設 http://localhost:3000（PORT 可改）
 ## 其他
 - `Dockerfile`：部署用（掛載 `/data`，主機需支援 WebSocket）。
 - Three.js 是複製進 `public/vendor/three`（MIT 授權）。
-- 重新產生 3D 模型：`npm run assets`（角色在 `tools/character.js`，家具與服飾在 `tools/make-assets.js`）。
+- 重新產生 3D 模型：`npm run assets`（角色在 `tools/character.js`，家具與服飾在 `tools/make-assets.js`）。角色五官是貼圖（`public/textures/face_m.png`、`face_f.png`），用 `node tools/make-face.js` 重畫（需要 Playwright）；角色預覽頁：`/dev/avatar.html?g=f`。

@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><title>角色預覽</title>
+<script type="importmap">{"imports":{"three":"/vendor/three/three.module.js","three/jsm/":"/vendor/three/jsm/"}}</script>
+<style>body{margin:0;background:#2a2230}canvas{display:block}</style></head><body>
+<script type="module">
+import * as THREE from 'three';
+import { buildAvatar } from '/js/gfx.js';
+const q = new URLSearchParams(location.search), g = q.get('g') || 'm', W = 1400, H = 700;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(W, H); r.toneMapping = THREE.ACESFilmicToneMapping; document.body.appendChild(r.domElement);
+const sc = new THREE.Scene(); sc.background = new THREE.Color(0x3a3040);
+sc.add(new THREE.HemisphereLight(0xfff2de, 0x5a4a40, 1.0)); const d = new THREE.DirectionalLight(0xffe8c8, 2.2); d.position.set(2, 4, 5); sc.add(d);
+const cat = await (await fetch('/catalog.json')).json(); const items = cat.items;
+const worn = q.get('naked') ? {} : { suit: `suit_start_${g}`, shoes: `shoes_start_${g}` };
+for (const id of (q.get('w') || '').split(',').filter(Boolean)) { const it = items[id]; if (!it) { console.log('MISSING', JSON.stringify(id)); continue; } if (it.cat === 'top' || it.cat === 'bottom') delete worn.suit; worn[it.cat] = id; }
+const av = await buildAvatar(g, worn, items); sc.add(av);
+await new Promise((res) => setTimeout(res, 800));
+const zoom = q.get('zoom'); const ty = zoom ? 1.12 : 0.85, dist = zoom ? 1.5 : 3.6;
+const views = [0, Math.PI / 4, Math.PI / 2, Math.PI];
+r.setScissorTest(true);
+views.forEach((a, i) => { const cam = new THREE.PerspectiveCamera(30, (W / 4) / H, 0.05, 50); cam.position.set(Math.sin(a) * dist, ty + 0.05, Math.cos(a) * dist); cam.lookAt(0, ty, 0); r.setViewport(i * W / 4, 0, W / 4, H); r.setScissor(i * W / 4, 0, W / 4, H); r.render(sc, cam); });
+document.title = 'done';
+</script></body></html>

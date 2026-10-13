@@ -115,7 +115,7 @@ function xform(g, t) {
     const l = Math.hypot(...n) || 1; n = rot(n.map((q) => q / l));
     nor.push(...n);
   }
-  return { pos, nor, idx: g.idx };
+  return g.uv ? { pos, nor, idx: g.idx, uv: g.uv } : { pos, nor, idx: g.idx };
 }
 
 const lin = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
@@ -129,14 +129,16 @@ class Model {
     if (i < 0) { this.mats.push({ key, color, ...o }); i = this.mats.length - 1; }
     return i;
   }
-  add(geo, mat, t = {}) { this.parts.push({ g: xform(geo, t), mat }); return this; }
+  add(geo, mat, t = {}) { this.parts.push({ g: xform(geo, t), mat, raw: !!t.raw }); return this; } // raw：已是最終座標，不套用變形
   save(file, deform) {
     const by = new Map();
-    for (let { g, mat } of this.parts) {
-      if (!by.has(mat)) by.set(mat, { pos: [], nor: [], idx: [] });
+    for (let { g, mat, raw } of this.parts) {
+      if (!by.has(mat)) by.set(mat, { pos: [], nor: [], idx: [], uv: [], hasUv: false });
       const m = by.get(mat), base = m.pos.length / 3;
-      if (deform) { g = { pos: g.pos.slice(), nor: g.nor.slice(), idx: g.idx }; for (let i = 0; i < g.pos.length; i += 3) { const d = deform(g.pos[i], g.pos[i + 1], g.pos[i + 2]); g.pos[i] = d.p[0]; g.pos[i + 1] = d.p[1]; g.pos[i + 2] = d.p[2]; const n = [g.nor[i] / d.s[0], g.nor[i + 1] / d.s[1], g.nor[i + 2] / d.s[2]], l = Math.hypot(...n) || 1; g.nor[i] = n[0] / l; g.nor[i + 1] = n[1] / l; g.nor[i + 2] = n[2] / l; } }
-      m.pos.push(...g.pos); m.nor.push(...g.nor); for (const i of g.idx) m.idx.push(i + base);
+      if (deform && !raw) { g = { pos: g.pos.slice(), nor: g.nor.slice(), idx: g.idx, uv: g.uv }; for (let i = 0; i < g.pos.length; i += 3) { const d = deform(g.pos[i], g.pos[i + 1], g.pos[i + 2]); g.pos[i] = d.p[0]; g.pos[i + 1] = d.p[1]; g.pos[i + 2] = d.p[2]; const n = [g.nor[i] / d.s[0], g.nor[i + 1] / d.s[1], g.nor[i + 2] / d.s[2]], l = Math.hypot(...n) || 1; g.nor[i] = n[0] / l; g.nor[i + 1] = n[1] / l; g.nor[i + 2] = n[2] / l; } }
+      for (let i = 0; i < g.pos.length; i++) { m.pos.push(g.pos[i]); m.nor.push(g.nor[i]); }
+      if (g.uv) { m.hasUv = true; for (const v of g.uv) m.uv.push(v); } else for (let i = 0; i < g.pos.length / 3; i++) m.uv.push(0, 0);
+      for (const i of g.idx) m.idx.push(i + base);
     }
     const bufs = [], accessors = [], views = [], meshes = [], nodes = [], matsOut = [];
     let off = 0;
@@ -155,10 +157,13 @@ class Model {
       const aP = push(pos, 34962, 'VEC3', 5126, pos.length / 3, { min: mn, max: mx });
       const aN = push(nor, 34962, 'VEC3', 5126, nor.length / 3);
       const aI = push(idx, 34963, 'SCALAR', 5125, idx.length);
-      meshes.push({ primitives: [{ attributes: { POSITION: aP, NORMAL: aN }, indices: aI, material: k }] });
+      const attributes = { POSITION: aP, NORMAL: aN };
+      if (d.hasUv) attributes.TEXCOORD_0 = push(new Float32Array(d.uv), 34962, 'VEC2', 5126, d.uv.length / 2);
+      meshes.push({ primitives: [{ attributes, indices: aI, material: k }] });
       nodes.push({ mesh: k });
       const mat = { pbrMetallicRoughness: { baseColorFactor: [...rgb(mm.color), 1], metallicFactor: mm.m ?? 0.1, roughnessFactor: mm.r ?? 0.7 }, doubleSided: true };
       if (mm.e) mat.emissiveFactor = rgb(mm.e);
+      if (mm.name) mat.name = mm.name; // 例如 FACE:f → 前端會換上臉部貼圖
       matsOut.push(mat);
     });
     const bin = Buffer.concat(bufs);
@@ -189,4 +194,4 @@ function png(file, size, fn) {
 }
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 
-module.exports = { Model, box, cyl, sphere, torus, lathe, png, hexRgb };
+module.exports = { Model, box, cyl, sphere, torus, lathe, png, hexRgb, smoothNormals };

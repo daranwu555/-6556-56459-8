@@ -118,6 +118,11 @@ Stage.prototype.sparkle = function (pos, { n = 16, spread = 0.6, color = 0xffe08
 };
 
 // ───── 角色 ─────
+const faceCache = {};
+function faceTex(g) {
+  if (!faceCache[g]) { const t = texLoader.load(resolve('/textures/face_' + g + '.png')); t.colorSpace = THREE.SRGBColorSpace; t.flipY = false; t.anisotropy = 8; t.wrapS = THREE.RepeatWrapping; faceCache[g] = t; }
+  return faceCache[g];
+}
 export async function buildAvatar(gender, worn, items) {
   const g = new THREE.Group();
   const w = worn || {};
@@ -128,6 +133,8 @@ export async function buildAvatar(gender, worn, items) {
   for (const k of ['shoes', 'head']) if (w[k] && items[w[k]]) urls.push('/' + items[w[k]].model);
   const parts = await Promise.all(urls.map((u) => instance(u).catch(() => null)));
   parts.forEach((p) => p && g.add(p));
+  // 臉部五官是貼圖（不是凸出的幾何）：把頭部材質換成帶貼圖的版本
+  g.traverse((o) => { if (o.isMesh && o.material && /^FACE:/.test(o.material.name)) { const k = o.material.name.slice(5); o.material = o.material.clone(); o.material.map = faceTex(k); o.material.color.set(0xffffff); o.material.needsUpdate = true; } });
   return g;
 }
 
@@ -164,7 +171,7 @@ export class DressView extends Stage {
     if (this.holder.children[0]) this.holder.children[0].scale.y = 1 + Math.sin(t * 2.2) * 0.008;
   }
   focus(mode) {
-    const T = { full: [0.75, 4.4, 1.0], upper: [1.0, 2.7, 0.8], head: [1.18, 2.0, 0.5], feet: [0.15, 2.0, 0.6] }[mode] || [0.75, 4.4, 1.0];
+    const T = { full: [0.8, 3.3, 0.9], upper: [1.0, 2.2, 0.7], head: [1.12, 1.45, 0.4], feet: [0.15, 1.8, 0.6] }[mode] || [0.8, 3.3, 0.9];
     this.controls.target.set(0, T[0], 0);
     const az = this.controls.getAzimuthalAngle();
     this.camera.position.set(Math.sin(az) * T[1], T[0] + T[2] * 0.4, Math.cos(az) * T[1]);
